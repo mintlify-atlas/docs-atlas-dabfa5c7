@@ -1,0 +1,91 @@
+{
+  "projectType": "saas",
+  "projectName": "Claude Analytics",
+  "projectDescription": "Visualize your Claude Code usage, sessions, costs, tokens, tools, and prompts with 100% client-side processing.",
+  "theme": "palm",
+  "primaryColor": "#7c7c7c",
+  "lightColor": "#0c0c0c",
+  "darkColor": "#d7d7df",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": ["introduction", "quickstart"]
+          },
+          {
+            "group": "Setup",
+            "pages": ["setup/local-mode", "setup/hosted-mode", "setup/export-data"]
+          },
+          {
+            "group": "Features",
+            "pages": [
+              "features/overview",
+              "features/activity-tracking",
+              "features/session-explorer",
+              "features/model-analytics",
+              "features/cost-tracking",
+              "features/tool-usage",
+              "features/prompt-history",
+              "features/multi-profile"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/understanding-data",
+              "guides/project-filtering",
+              "guides/privacy-security"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Reference",
+        "groups": [
+          {
+            "group": "Architecture",
+            "pages": ["reference/architecture", "reference/data-model", "reference/components"]
+          },
+          {
+            "group": "Data Sources",
+            "pages": [
+              "reference/data-sources/stats-cache",
+              "reference/data-sources/session-meta",
+              "reference/data-sources/history",
+              "reference/data-sources/project-memory"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Activity heatmap with GitHub-style contribution grid",
+    "Session explorer with expandable message threads",
+    "Model usage breakdown with cost tracking",
+    "Daily token consumption visualization",
+    "Tool usage analytics (Read, Edit, Bash, etc.)",
+    "Searchable prompt history with copy functionality",
+    "Multi-profile support for data comparison",
+    "Project-level filtering across all views",
+    "100% client-side processing for privacy"
+  ],
+  "publicApiSurface": [
+    "loadAllData() - Load all Claude Code data from ~/.claude/",
+    "loadStatsCache() - Load aggregated statistics",
+    "loadSessionMetas() - Load session metadata files",
+    "loadHistory() - Load prompt history",
+    "loadProjectMemories() - Load project memory files",
+    "Dashboard component - Main analytics dashboard",
+    "StatsOverview component - Summary statistics cards",
+    "ActivityHeatmap component - Daily activity visualization",
+    "SessionTable component - Session browser with message viewer",
+    "ModelBreakdown component - Model usage and cost analysis",
+    "ToolUsageChart component - Tool call frequency charts",
+    "PromptHistory component - Searchable prompt log",
+    "export.mjs script - CLI data export utility"
+  ]
+}
