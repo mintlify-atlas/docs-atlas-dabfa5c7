@@ -1,0 +1,105 @@
+---
+title: Introduction
+description: A personal analytics dashboard for Claude Code sessions that visualizes your coding patterns, model usage, tool calls, and spending — all with 100% client-side processing
+---
+
+## What is Claude Analytics?
+
+Claude Analytics is a personal analytics dashboard for [Claude Code](https://claude.ai/claude-code) sessions. It visualizes your coding patterns, model usage, tool calls, spending, and prompt history — all from the data Claude Code stores locally on your machine.
+
+<Note>
+  **Your data never leaves your browser.** The hosted version processes everything client-side.
+</Note>
+
+## Key benefits
+
+<CardGroup cols={2}>
+  <Card title="Privacy-first design" icon="shield-check">
+    All processing happens in your browser. No external APIs, no telemetry, no data uploads.
+  </Card>
+  <Card title="Comprehensive insights" icon="chart-line">
+    Track sessions, messages, tokens, costs, tools, and prompts across all your Claude Code usage.
+  </Card>
+  <Card title="Two flexible modes" icon="toggle-on">
+    Run locally with auto-loaded data or export and upload to the hosted version.
+  </Card>
+  <Card title="Multi-profile support" icon="users">
+    Upload multiple export files and switch between different profiles or accounts.
+  </Card>
+</CardGroup>
+
+## How it works
+
+Claude Code stores session metadata, usage statistics, and prompt history locally in your `~/.claude/` directory. Claude Analytics reads these files and renders interactive charts and tables.
+
+### Data sources
+
+The dashboard reads from several data sources in your `~/.claude/` directory:
+
+| File | What it contains |
+|------|------------------|
+| `stats-cache.json` | Aggregated statistics, model usage, daily activity, and cost tracking |
+| `usage-data/session-meta/*.json` | Per-session metadata (duration, tools, lines, commits) |
+| `history.jsonl` | Every prompt you've sent to Claude Code |
+| `projects/<id>/<session>.jsonl` | Full conversation messages (local mode only) |
+| `projects/<id>/memory/*.md` | Project memory files |
+
+<Info>
+  In local mode, the Next.js server reads these files directly. In hosted mode, you export them to JSON and upload them — all processing still happens client-side.
+</Info>
+
+## Privacy-first approach
+
+Claude Analytics is designed with privacy as the top priority:
+
+- **No external APIs** — All data stays on your machine or in your browser
+- **No telemetry** — The application doesn't track or log your usage
+- **Client-side processing** — In hosted mode, everything happens in your browser
+- **No authentication** — No accounts, no sign-ups, no data collection
+- **Local data** — Reads directly from Claude Code's local storage
+
+<Warning>
+  While the hosted version is privacy-focused, running locally gives you complete control over your data. Choose the mode that best fits your security requirements.
+</Warning>
+
+## Use cases
+
+### Track your productivity patterns
+
+View GitHub-style activity heatmaps to see when you're most productive and identify your coding patterns over time.
+
+### Monitor costs
+
+Get detailed cost breakdowns by model to understand your Claude Code spending and optimize your usage.
+
+### Analyze tool usage
+
+See which tools (Read, Edit, Bash, etc.) you use most frequently and understand your workflow patterns.
+
+### Review prompt history
+
+Search through your complete prompt history to find and reuse effective prompts.
+
+### Compare profiles
+
+Upload multiple export files to compare usage across different accounts or time periods.
+
+## Architecture overview
+
+Claude Analytics is built with:
+
+- **Next.js 16** (App Router) for the framework
+- **React 19** for the UI
+- **Tailwind CSS 4** for styling
+- **shadcn/ui** for components
+- **Recharts** for data visualizations
+- **bun** as the package manager and runtime
+
+The application runs in two modes:
+
+1. **Local mode** — Server component reads `~/.claude/` directly via Node `fs` and passes data to the client
+2. **Upload mode** — User exports data with `scripts/export.mjs`, then uploads the JSON file. All processing happens client-side
+
+<Check>
+  Ready to get started? Continue to the [Quickstart guide](/quickstart) for step-by-step setup instructions.
+</Check>

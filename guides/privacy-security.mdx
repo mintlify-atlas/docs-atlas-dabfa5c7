@@ -1,0 +1,410 @@
+---
+title: Privacy & Security
+description: Your data never leaves your browser. Learn how Claude Analytics protects your privacy.
+---
+
+## Core Privacy Principle
+
+**Your data never leaves your browser.** Claude Analytics is designed from the ground up with privacy as the top priority.
+
+<Check>
+All data processing happens locally on your machine or in your browser. No servers receive, store, or process your usage data.
+</Check>
+
+## How It Works
+
+Claude Analytics operates in two modes, both completely private:
+
+### Local Mode (Direct File Access)
+
+When running locally with `npm run dev`:
+
+1. Next.js server component reads files directly from `~/.claude/` directory
+2. Data is loaded using Node.js `fs` module (src/lib/load-data.ts)
+3. Data is passed to client components for rendering
+4. No network requests are made (except for Next.js dev server)
+5. No external APIs are called
+
+```typescript
+// From src/lib/load-data.ts:17
+const CLAUDE_DIR = path.join(process.env.HOME || "~", ".claude");
+
+export function loadAllData(): DashboardData {
+  return {
+    stats: loadStatsCache(),
+    sessions: loadSessionMetas(),
+    history: loadHistory(),
+    memories: loadProjectMemories(),
+  };
+}
+```
+
+<Info>
+In local mode, data is read directly from disk on your machine. The Next.js development server never exposes this data externally.
+</Info>
+
+### Upload Mode (Client-Side Processing)
+
+When using the hosted version at `https://claude-analytics.vercel.app`:
+
+1. Run `node scripts/export.mjs` locally to create a JSON export file
+2. Export file is generated entirely on your machine
+3. You manually upload the file to the web app via drag-and-drop
+4. **File is processed entirely in your browser's JavaScript runtime**
+5. **No upload to any server occurs**
+6. Data stays in browser memory and localStorage only
+
+```javascript
+// From scripts/export.mjs:102-114
+const data = {
+  stats,
+  sessions,
+  history,
+  memories,
+  account: Object.keys(account).length > 0 ? account : undefined,
+  exportedAt: new Date().toISOString(),
+};
+fs.writeFileSync(OUTPUT, JSON.stringify(data));
+
+const sizeMB = (fs.statSync(OUTPUT).size / 1024 / 1024).toFixed(1);
+console.log(`\nExported to: ${OUTPUT} (${sizeMB} MB)`);
+console.log("Upload this file at: https://claude-analytics.vercel.app");
+```
+
+<Warning>
+The "upload" in upload mode is a misnomer. The file is read by JavaScript in your browser using the File API. No HTTP upload occurs.
+</Warning>
+
+## Architecture Details
+
+### Client-Side Only Rendering
+
+From the architecture documentation:
+
+> All components use `"use client"`. The server component (`page.tsx`) only reads files from disk — all chart rendering and interaction is client-side. This means the app works as a static export with uploaded files.
+
+Every component that processes or displays data is marked with `"use client"` (src/components/dashboard.tsx:1):
+
+```typescript
+"use client";
+
+import { useState, useMemo } from "react";
+import type { DashboardData } from "@/lib/types";
+// ... rest of imports
+```
+
+This ensures all data processing happens in your browser, not on a server.
+
+### No Database
+
+From the architecture documentation:
+
+> No data is ever sent to external servers. There is no database.
+
+Claude Analytics has:
+- No database
+- No authentication system
+- No user accounts
+- No server-side data storage
+- No analytics or tracking
+- No telemetry
+
+## Data Storage
+
+### Where Claude Code Stores Data
+
+From the README:
+
+| File | What it contains |
+|------|------------------|
+| `~/.claude/stats-cache.json` | Aggregated stats, model usage, daily activity, cost |
+| `~/.claude/usage-data/session-meta/*.json` | Per-session metadata (duration, tools, lines, commits) |
+| `~/.claude/history.jsonl` | Every prompt you've sent |
+| `~/.claude/projects/<id>/<session>.jsonl` | Full conversation messages (local mode only) |
+| `~/.claude/projects/<id>/memory/*.md` | Project memory files |
+
+<Info>
+All these files are stored locally on your machine by Claude Code itself. Claude Analytics only reads them; it never modifies or transmits them.
+</Info>
+
+### Browser Storage (Upload Mode)
+
+In upload mode, data is stored in:
+
+1. **Browser Memory** — Active data for current session
+2. **localStorage** (optional) — Multi-profile data persistence
+
+```typescript
+// From src/components/client-page.tsx
+// Profiles are stored in localStorage with key "claude-analytics-profiles"
+```
+
+localStorage data:
+- Stays on your device
+- Never syncs to cloud
+- Can be cleared anytime via browser settings
+- Only accessible by JavaScript from the same origin
+
+## Export File Handling
+
+### What's Included in Exports
+
+The export script (`scripts/export.mjs`) collects:
+
+1. **stats-cache.json** — Pre-aggregated statistics
+2. **session-meta/*.json** — All session metadata
+3. **history.jsonl** — All prompts (full text)
+4. **memories** — Project memory files with content (max 5000 chars per file)
+5. **account info** — Your account UUID and organization UUID (from statsig cache)
+
+<Warning>
+Export files contain all your prompts and session data. Treat them like sensitive documents. Do not share them publicly or upload them to untrusted services.
+</Warning>
+
+### Export File Security
+
+From scripts/export.mjs:101-114:
+
+```javascript
+const data = {
+  stats,
+  sessions,
+  history,
+  memories,
+  account: Object.keys(account).length > 0 ? account : undefined,
+  exportedAt: new Date().toISOString(),
+};
+fs.writeFileSync(OUTPUT, JSON.stringify(data));
+```
+
+Export files:
+- Are created locally on your machine
+- Contain unencrypted JSON data
+- Should be stored securely (treat like source code)
+- Can be deleted anytime after viewing
+- Are never required to be shared or uploaded anywhere
+
+## Network Activity
+
+### Local Mode
+
+**Outgoing requests:** None (except Next.js dev server communication)
+
+**Server endpoints:**
+- `http://localhost:3000` — Web UI (local only)
+- `http://localhost:3000/api/session-messages` — Reads session transcripts from disk
+
+Both are local-only and never accessible from the internet.
+
+### Upload Mode (Hosted)
+
+**Outgoing requests:** None for data processing
+
+**What the hosted app does:**
+- Serves static HTML/CSS/JavaScript files
+- All JavaScript runs in your browser
+- File reading happens via browser File API
+- No fetch/XHR requests to external services for data
+
+<Info>
+The hosted version at claude-analytics.vercel.app is a static site. Vercel serves the files, but all data processing happens in your browser's JavaScript engine.
+</Info>
+
+## Code Verification
+
+You can verify the privacy guarantees by inspecting the source code:
+
+### Data Loading (Local Mode)
+
+`src/lib/load-data.ts` — All functions use Node.js `fs` to read local files:
+
+```typescript
+export function loadStatsCache(): StatsCache | null {
+  try {
+    const raw = fs.readFileSync(path.join(CLAUDE_DIR, "stats-cache.json"), "utf-8");
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+```
+
+No network calls. No external APIs.
+
+### Dashboard Component
+
+`src/components/dashboard.tsx` — All filtering and processing uses React hooks:
+
+```typescript
+const filteredSessions = useMemo(
+  () =>
+    selectedProject === "all"
+      ? data.sessions
+      : data.sessions.filter((s) => s.project_path === selectedProject),
+  [data.sessions, selectedProject]
+);
+```
+
+Pure client-side data transformation. No API calls.
+
+### Upload Component
+
+`src/components/upload-zone.tsx` — File reading uses browser File API:
+
+```typescript
+// File is read using FileReader API
+const reader = new FileReader();
+reader.onload = (e) => {
+  const data = JSON.parse(e.target.result as string);
+  // Data stays in browser memory
+};
+reader.readAsText(file);
+```
+
+File never leaves your browser.
+
+## What Data Contains
+
+### Potentially Sensitive Information
+
+Your Claude Analytics data may contain:
+
+- **Project paths** — Full directory paths on your machine
+- **Prompts** — Every prompt you've sent to Claude Code
+- **Code context** — Pasted code snippets from your projects
+- **File names** — Names of files you've worked on
+- **Commit messages** — From git operations
+- **Memory files** — Project-specific context that Claude maintains
+- **Account UUID** — Your Claude account identifier
+
+<Warning>
+Never share export files or screenshots publicly without redacting sensitive information like project paths, prompts, and account UUIDs.
+</Warning>
+
+### Not Included in Data
+
+Your data does NOT contain:
+
+- Your actual source code files (only filenames and line counts)
+- Passwords or API keys (unless you pasted them in prompts)
+- Email address or name
+- Payment information
+- IP addresses
+- Device information (beyond what Claude Code tracks)
+
+## Multi-Profile Privacy
+
+The multi-profile feature allows you to upload multiple export files:
+
+- Each profile's data is isolated
+- Stored separately in browser localStorage
+- Switching profiles doesn't mix data
+- Deleting a profile removes its data from localStorage
+
+```typescript
+// From src/components/client-page.tsx
+interface Profile {
+  id: string;
+  name: string;
+  data: DashboardData;
+}
+```
+
+All profile data stays in your browser. No synchronization or cloud backup.
+
+## Recommendations
+
+### For Maximum Privacy
+
+1. **Use local mode** — Run `npm run dev` and access via `http://localhost:3000`
+2. **Keep export files secure** — Treat them like source code or credentials
+3. **Don't share screenshots** — Redact project paths and prompts first
+4. **Clear localStorage** — Delete profiles when done analyzing
+5. **Review export contents** — Inspect the JSON file before sharing
+
+### Safe Practices
+
+<CheckStep>
+  <Check>Run locally when analyzing sensitive projects</Check>
+  <Check>Delete export files after viewing</Check>
+  <Check>Use browser's private/incognito mode for extra privacy</Check>
+  <Check>Verify no network requests in browser DevTools Network tab</Check>
+</CheckStep>
+
+### Unsafe Practices
+
+<WarningStep>
+  <Warning>Don't upload export files to cloud storage without encryption</Warning>
+  <Warning>Don't share export files via email or Slack</Warning>
+  <Warning>Don't commit export files to git repositories</Warning>
+  <Warning>Don't use shared computers without clearing localStorage after</Warning>
+</WarningStep>
+
+## Open Source Transparency
+
+Claude Analytics is open source:
+
+- Source code: `https://github.com/1shanpanta/claude-analytics`
+- MIT License
+- All code is auditable
+- No obfuscation or minification in repository
+
+You can verify every claim in this document by reading the source code.
+
+## Compliance Considerations
+
+### GDPR
+
+Claude Analytics:
+- Processes no personal data on servers
+- Stores no data in databases
+- Has no data controllers or processors
+- Requires no consent mechanism
+- Cannot be subject to data breaches (no central storage)
+
+### Data Retention
+
+Data retention is entirely under your control:
+
+- **Local mode:** Data persists in `~/.claude/` until you delete it
+- **Upload mode:** Data persists in browser until you clear localStorage
+- **Export files:** Persist until you delete them from your filesystem
+
+No third-party retention policies apply.
+
+## Questions & Concerns
+
+If you have privacy or security concerns:
+
+1. **Review the source code** — All privacy claims are verifiable
+2. **Check browser DevTools** — Monitor network activity yourself
+3. **Use local mode** — Eliminate any upload concerns entirely
+4. **Report issues** — File issues at `https://github.com/1shanpanta/claude-analytics/issues`
+
+## Summary
+
+<CardGroup cols={2}>
+  <Card title="Zero Server Storage" icon="server">
+    No databases, no accounts, no server-side data storage
+  </Card>
+  <Card title="Client-Side Processing" icon="browser">
+    All charts and analytics computed in your browser
+  </Card>
+  <Card title="Local File Access" icon="file">
+    Reads directly from ~/.claude/ in local mode
+  </Card>
+  <Card title="No Telemetry" icon="shield-check">
+    No tracking, analytics, or usage reporting
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Understanding Data" icon="database" href="/guides/understanding-data">
+    Learn about all data types and metrics
+  </Card>
+  <Card title="Project Filtering" icon="filter" href="/guides/project-filtering">
+    Filter your analytics by project
+  </Card>
+</CardGroup>

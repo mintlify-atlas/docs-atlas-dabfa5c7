@@ -1,0 +1,308 @@
+---
+title: 'Local Mode Setup'
+description: 'Run Claude Analytics locally and automatically load your usage data from ~/.claude/'
+icon: 'laptop-code'
+---
+
+Local mode is the fastest way to get started with Claude Analytics. It runs directly on your machine and automatically loads all your Claude Code data without any export steps.
+
+## How It Works
+
+When you run Claude Analytics locally, it reads your usage data directly from the `~/.claude/` directory where Claude Code stores all session metadata, prompts, and statistics.
+
+<Note>
+Your data never leaves your machine. Everything is processed locally using Node.js file system APIs.
+</Note>
+
+## Prerequisites
+
+<Steps>
+  <Step title="Node.js or Bun">
+    You need Node.js 18+ or Bun installed on your system.
+    
+    Check your version:
+    ```bash
+    node --version  # or: bun --version
+    ```
+  </Step>
+  
+  <Step title="Claude Code Usage Data">
+    You must have used Claude Code at least once. The app expects data to exist at:
+    
+    - `~/.claude/stats-cache.json`
+    - `~/.claude/usage-data/session-meta/*.json`
+    - `~/.claude/history.jsonl`
+    - `~/.claude/projects/` (optional)
+  </Step>
+  
+  <Step title="Git (optional)">
+    Only needed if cloning from GitHub. You can also download the source as a ZIP.
+  </Step>
+</Steps>
+
+## Installation
+
+<CodeGroup>
+
+```bash npm
+git clone https://github.com/1shanpanta/claude-analytics.git
+cd claude-analytics
+npm install
+npm run dev
+```
+
+```bash bun
+git clone https://github.com/1shanpanta/claude-analytics.git
+cd claude-analytics
+bun install
+bun dev
+```
+
+```bash pnpm
+git clone https://github.com/1shanpanta/claude-analytics.git
+cd claude-analytics
+pnpm install
+pnpm dev
+```
+
+</CodeGroup>
+
+The app will start at `http://localhost:3000` and automatically load your data.
+
+## Data Loading Process
+
+Claude Analytics uses a server-side data loader that runs on every page load. Here's the complete implementation:
+
+### loadAllData() Function
+
+```typescript
+// From: src/lib/load-data.ts
+import fs from "fs";
+import path from "path";
+
+const CLAUDE_DIR = path.join(process.env.HOME || "~", ".claude");
+
+export function loadAllData(): DashboardData {
+  return {
+    stats: loadStatsCache(),
+    sessions: loadSessionMetas(),
+    history: loadHistory(),
+    memories: loadProjectMemories(),
+  };
+}
+```
+
+This function orchestrates four separate data loaders:
+
+### 1. Stats Cache Loader
+
+Loads aggregated statistics from `~/.claude/stats-cache.json`:
+
+```typescript
+export function loadStatsCache(): StatsCache | null {
+  try {
+    const raw = fs.readFileSync(path.join(CLAUDE_DIR, "stats-cache.json"), "utf-8");
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+```
+
+<Info>
+The stats cache contains pre-computed metrics like total sessions, daily activity, model usage, and hourly breakdowns.
+</Info>
+
+### 2. Session Metadata Loader
+
+Reads all session files from `~/.claude/usage-data/session-meta/`:
+
+```typescript
+export function loadSessionMetas(): SessionMeta[] {
+  const dir = path.join(CLAUDE_DIR, "usage-data", "session-meta");
+  try {
+    const files = fs.readdirSync(dir).filter((f) => f.endsWith(".json"));
+    return files
+      .map((f) => {
+        try {
+          const raw = fs.readFileSync(path.join(dir, f), "utf-8");
+          return JSON.parse(raw) as SessionMeta;
+        } catch {
+          return null;
+        }
+      })
+      .filter((s): s is SessionMeta => s !== null && s.duration_minutes > 0)
+      .sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
+  } catch {
+    return [];
+  }
+}
+```
+
+Key features:
+- Filters out invalid sessions (duration = 0)
+- Sorts by start time (most recent first)
+- Gracefully handles missing or corrupt files
+
+### 3. History Loader
+
+Parses the JSONL history file containing all your prompts:
+
+```typescript
+export function loadHistory(): HistoryEntry[] {
+  try {
+    const raw = fs.readFileSync(path.join(CLAUDE_DIR, "history.jsonl"), "utf-8");
+    return raw
+      .trim()
+      .split("\n")
+      .map((line) => {
+        try {
+          return JSON.parse(line) as HistoryEntry;
+        } catch {
+          return null;
+        }
+      })
+      .filter((e): e is HistoryEntry => e !== null);
+  } catch {
+    return [];
+  }
+}
+```
+
+<Warning>
+The history file can be large (10,000+ lines). The parser skips malformed entries rather than failing entirely.
+</Warning>
+
+### 4. Project Memory Loader
+
+Reads project-specific memory files from `~/.claude/projects/`:
+
+```typescript
+export function loadProjectMemories(): ProjectMemory[] {
+  const dir = path.join(CLAUDE_DIR, "projects");
+  try {
+    const projects = fs.readdirSync(dir);
+    return projects.map((p) => {
+      const memDir = path.join(dir, p, "memory");
+      let files: { name: string; content: string }[] = [];
+      try {
+        const mdFiles = fs.readdirSync(memDir).filter((f) => f.endsWith(".md"));
+        files = mdFiles.map((f) => ({
+          name: f,
+          content: fs.readFileSync(path.join(memDir, f), "utf-8").slice(0, 5000),
+        }));
+      } catch {
+        /* no memory dir */
+      }
+      return { project: p, files };
+    }).filter(p => p.files.length > 0);
+  } catch {
+    return [];
+  }
+}
+```
+
+<Info>
+Memory files are truncated to 5,000 characters each to avoid loading massive files into memory.
+</Info>
+
+## Server Component Integration
+
+The Next.js page component calls `loadAllData()` on every request:
+
+```typescript
+// From: src/app/page.tsx
+import { loadAllData } from "@/lib/load-data";
+import { ClientPage } from "@/components/client-page";
+
+export const dynamic = "force-dynamic";
+
+export default function Home() {
+  const data = loadAllData();
+  const hasData = data.stats !== null || data.sessions.length > 0;
+
+  return <ClientPage initialData={hasData ? data : null} />;
+}
+```
+
+If no data is found, the upload zone is shown instead of the dashboard.
+
+## File Structure
+
+Local mode expects this directory structure:
+
+```
+~/.claude/
+├── stats-cache.json              # Aggregated statistics
+├── history.jsonl                 # All prompts (one per line)
+├── usage-data/
+│   └── session-meta/
+│       ├── <session-id>.json     # Per-session metadata
+│       └── ...
+└── projects/
+    ├── <project-id>/
+    │   ├── <session-id>.jsonl    # Full conversation messages
+    │   └── memory/
+    │       ├── *.md              # Project memory files
+    └── ...
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="No data appears on the dashboard">
+    Check that your `~/.claude/` directory exists and contains data:
+    
+    ```bash
+    ls -la ~/.claude/
+    cat ~/.claude/stats-cache.json
+    ```
+    
+    If the directory is empty, use Claude Code at least once to generate data.
+  </Accordion>
+  
+  <Accordion title="Port 3000 is already in use">
+    Specify a different port:
+    
+    ```bash
+    PORT=3001 npm run dev
+    ```
+  </Accordion>
+  
+  <Accordion title="Permission denied reading ~/.claude/">
+    Ensure you have read permissions:
+    
+    ```bash
+    chmod -R u+r ~/.claude/
+    ```
+  </Accordion>
+  
+  <Accordion title="Some sessions are missing">
+    The loader filters out sessions with `duration_minutes = 0`. Check the raw JSON files:
+    
+    ```bash
+    cat ~/.claude/usage-data/session-meta/<session-id>.json
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Performance Considerations
+
+- **Startup time**: Loading 1,000+ sessions takes ~200ms on modern hardware
+- **Memory usage**: ~50MB for 10,000 history entries and 500 sessions
+- **Hot reload**: Changes to source code trigger a reload but don't re-read `~/.claude/`
+
+<Tip>
+For faster iteration during development, use `bun dev` instead of `npm run dev`. Bun's startup time is significantly faster.
+</Tip>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Export Data" icon="download" href="/setup/export-data">
+    Learn how to export your data for use in hosted mode
+  </Card>
+  <Card title="Features Overview" icon="grid" href="/features/overview">
+    Explore all available analytics features
+  </Card>
+</CardGroup>

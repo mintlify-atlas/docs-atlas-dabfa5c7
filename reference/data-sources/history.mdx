@@ -1,0 +1,201 @@
+---
+title: "history.jsonl"
+description: "Complete log of every prompt sent to Claude Code in JSONL format"
+---
+
+## Overview
+
+The `history.jsonl` file is a line-delimited JSON log containing every prompt you've sent to Claude Code. Each line is a separate JSON object representing one history entry with the prompt text, timestamp, and project context.
+
+## File Location
+
+```
+~/.claude/history.jsonl
+```
+
+## File Format
+
+**JSONL** (JSON Lines): Each line is a valid JSON object. Lines are separated by newline characters (`\n`).
+
+<Note>
+  JSONL format allows for efficient append-only writes and streaming reads. Each line can be parsed independently.
+</Note>
+
+## Data Structure
+
+### HistoryEntry Interface
+
+```typescript
+export interface HistoryEntry {
+  display: string;
+  pastedContents: Record<string, unknown>;
+  timestamp: number;
+  project: string;
+}
+```
+
+<ResponseField name="display" type="string" required>
+  The prompt text that was sent to Claude. This is the user's message content.
+</ResponseField>
+
+<ResponseField name="pastedContents" type="Record<string, unknown>" required>
+  Metadata about any content that was pasted or attached to the prompt. Typically an empty object `{}` for simple text prompts.
+</ResponseField>
+
+<ResponseField name="timestamp" type="number" required>
+  Unix timestamp in milliseconds when the prompt was sent
+</ResponseField>
+
+<ResponseField name="project" type="string" required>
+  Project identifier (typically the project directory name or ID)
+</ResponseField>
+
+## Loading Function
+
+From `src/lib/load-data.ts`:
+
+```typescript
+export function loadHistory(): HistoryEntry[] {
+  try {
+    const raw = fs.readFileSync(path.join(CLAUDE_DIR, "history.jsonl"), "utf-8");
+    return raw
+      .trim()
+      .split("\n")
+      .map((line) => {
+        try {
+          return JSON.parse(line) as HistoryEntry;
+        } catch {
+          return null;
+        }
+      })
+      .filter((e): e is HistoryEntry => e !== null);
+  } catch {
+    return [];
+  }
+}
+```
+
+The loader:
+1. Reads the entire file as a string
+2. Trims whitespace and splits on newlines
+3. Parses each line as JSON
+4. Filters out any lines that failed to parse
+5. Returns an empty array if the file doesn't exist
+
+<Note>
+  Invalid lines are silently skipped. This prevents corruption in one entry from breaking the entire history.
+</Note>
+
+## Usage in Export Script
+
+From `scripts/export.mjs`:
+
+```javascript
+// 3. History
+let history = [];
+try {
+  const raw = fs.readFileSync(path.join(CLAUDE_DIR, "history.jsonl"), "utf-8");
+  history = raw.trim().split("\n").map((line) => {
+    try { return JSON.parse(line); } catch { return null; }
+  }).filter(Boolean);
+  console.log(`  history.jsonl ✓ (${history.length} entries)`);
+} catch {
+  console.log("  history.jsonl ✗ (not found)");
+}
+```
+
+The export script:
+1. Reads and parses the JSONL file line by line
+2. Counts the total number of entries
+3. Logs success with entry count or failure if file is missing
+4. Includes the full history array in the export bundle
+
+## Example Entries
+
+```jsonl
+{"display":"Fix the authentication bug","pastedContents":{},"timestamp":1709561234567,"project":"my-app"}
+{"display":"Add tests for the user service","pastedContents":{},"timestamp":1709561345678,"project":"my-app"}
+{"display":"Refactor the database connection logic","pastedContents":{},"timestamp":1709562456789,"project":"backend-api"}
+```
+
+Each line is a complete JSON object. No commas between lines. The file can grow indefinitely.
+
+## Use Cases
+
+### Prompt History Search
+
+The Prompt History component enables:
+- Full-text search across all prompts
+- Filter by project
+- Copy prompts to clipboard
+- View chronologically or by project
+
+### Pattern Analysis
+
+Analyze your prompting patterns:
+- Most common request types
+- Average prompt length
+- Time gaps between prompts
+- Project-specific prompting styles
+
+### Debugging Sessions
+
+Cross-reference prompts with session metadata:
+```typescript
+import { loadHistory, loadSessionMetas } from "./load-data";
+
+const history = loadHistory();
+const sessions = loadSessionMetas();
+
+// Find prompts during a specific session
+const sessionStart = new Date(sessions[0].start_time).getTime();
+const sessionEnd = sessionStart + sessions[0].duration_minutes * 60 * 1000;
+
+const sessionPrompts = history.filter(
+  (h) => h.timestamp >= sessionStart && h.timestamp <= sessionEnd
+);
+```
+
+### Data Export
+
+Export to other formats:
+```typescript
+// Convert to CSV
+const csv = history
+  .map((h) => `"${h.timestamp}","${h.project}","${h.display.replace(/"/g, '""')}"`)
+  .join("\n");
+
+// Export prompts for a specific project
+const projectPrompts = history
+  .filter((h) => h.project === "my-app")
+  .map((h) => h.display);
+```
+
+## File Growth
+
+The history file grows continuously as you use Claude Code. A typical entry is ~100-500 bytes depending on prompt length.
+
+**Estimated growth**:
+- 10 prompts/day × 200 bytes = 2 KB/day
+- 1 year = ~730 KB
+- 5 years = ~3.6 MB
+
+The JSONL format remains efficient even with thousands of entries. The dashboard loads the entire file into memory for search and filtering.
+
+## Privacy Considerations
+
+<Warning>
+  The history file contains **every prompt** you've sent, which may include:
+  - Code snippets
+  - API keys or credentials (if pasted)
+  - Project names and file paths
+  - Personal information
+  
+  Treat this file as sensitive data. Do not share export files publicly unless you've reviewed all prompts.
+</Warning>
+
+## Related Data Sources
+
+- [session-meta](/reference/data-sources/session-meta) - Session-level metadata
+- [stats-cache](/reference/data-sources/stats-cache) - Aggregated statistics
+- [project-memory](/reference/data-sources/project-memory) - Project-specific memory files

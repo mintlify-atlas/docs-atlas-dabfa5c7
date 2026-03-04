@@ -1,0 +1,328 @@
+---
+title: 'Hosted Mode Setup'
+description: 'Use the hosted version of Claude Analytics with client-side data processing'
+icon: 'cloud-arrow-up'
+---
+
+Hosted mode lets you use Claude Analytics without running a local server. Simply export your data and upload it to the hosted web app — all processing happens entirely in your browser.
+
+<Note>
+**Privacy guarantee**: Your data never touches any server. The upload is processed 100% client-side using the Web File API.
+</Note>
+
+## How It Works
+
+1. **Export**: Run a script locally that reads your `~/.claude/` directory and generates a single JSON file
+2. **Upload**: Drag and drop the file into the hosted app at [claude-analytics.vercel.app](https://claude-analytics.vercel.app)
+3. **Process**: Your browser parses the JSON and renders the dashboard
+
+<Info>
+The hosted app is a static Next.js site. There is no backend server — just HTML, CSS, and JavaScript delivered via CDN.
+</Info>
+
+## Step 1: Export Your Data
+
+### Quick Export (No Installation)
+
+The export script uses only Node.js built-ins, so you don't need to install any dependencies:
+
+```bash
+git clone https://github.com/1shanpanta/claude-analytics.git && cd claude-analytics
+node scripts/export.mjs
+```
+
+Output:
+```
+Claude Code Analytics — Data Export
+
+  stats-cache.json ✓
+  session-meta/ ✓ (127 sessions)
+  history.jsonl ✓ (1,543 entries)
+  account info ✓ (a1b2c3d4...)
+  memories ✓ (23 files across 5 projects)
+
+Exported to: /path/to/claude-analytics-export.json (2.4 MB)
+Upload this file at: https://claude-analytics.vercel.app
+```
+
+### What Gets Exported
+
+The export file contains:
+
+| Data | Source | Purpose |
+|------|--------|----------|
+| **Stats cache** | `~/.claude/stats-cache.json` | Aggregated metrics, daily activity, model usage |
+| **Session metadata** | `~/.claude/usage-data/session-meta/*.json` | Per-session duration, tools, tokens, commits |
+| **History** | `~/.claude/history.jsonl` | All prompts with timestamps |
+| **Project memories** | `~/.claude/projects/*/memory/*.md` | Project-specific context files |
+| **Account info** | `~/.claude/statsig/` | Account UUID (optional, for multi-profile support) |
+
+<Warning>
+The export does **not** include full conversation messages. Those are only available in local mode.
+</Warning>
+
+### Export File Structure
+
+```json
+{
+  "stats": { /* StatsCache */ },
+  "sessions": [ /* SessionMeta[] */ ],
+  "history": [ /* HistoryEntry[] */ ],
+  "memories": [ /* ProjectMemory[] */ ],
+  "account": {
+    "accountUUID": "a1b2c3d4-...",
+    "organizationUUID": "org-..."
+  },
+  "exportedAt": "2026-03-04T12:34:56.789Z"
+}
+```
+
+## Step 2: Upload to Hosted App
+
+### Drag and Drop
+
+1. Visit [claude-analytics.vercel.app](https://claude-analytics.vercel.app)
+2. Drag `claude-analytics-export.json` onto the upload zone
+3. Wait for the processing indicator (usually < 1 second)
+4. Your dashboard appears
+
+<img src="/images/upload-zone.png" alt="Upload zone interface" />
+
+### Click to Browse
+
+Alternatively, click the upload zone and select the file from your file picker.
+
+## Client-Side Processing
+
+Here's how the hosted app processes your upload:
+
+```typescript
+// From: src/components/upload-zone.tsx
+const processFile = useCallback(async (file: File) => {
+  setLoading(true);
+  setError(null);
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text) as DashboardData;
+
+    if (!data.sessions && !data.stats) {
+      setError("Invalid file format. Please use the export script to generate the data file.");
+      return;
+    }
+
+    // Ensure arrays exist
+    data.sessions = data.sessions || [];
+    data.history = data.history || [];
+    data.memories = data.memories || [];
+
+    // Normalize old memory format (string[] → {name, content}[])
+    for (const mem of data.memories) {
+      if (mem.files?.length && typeof mem.files[0] === "string") {
+        mem.files = (mem.files as unknown as string[]).map((f) => ({
+          name: f,
+          content: "",
+        }));
+      }
+    }
+
+    onDataLoaded(data);
+  } catch {
+    setError("Failed to parse file. Make sure it's a valid JSON export.");
+  } finally {
+    setLoading(false);
+  }
+}, [onDataLoaded]);
+```
+
+Key features:
+- Validates JSON structure before loading
+- Normalizes legacy export formats
+- Provides clear error messages for invalid files
+- Never sends data over the network
+
+## Multi-Profile Support
+
+You can upload multiple export files and switch between them:
+
+<Steps>
+  <Step title="Upload First Profile">
+    Drop your primary export file (e.g., work account)
+  </Step>
+  
+  <Step title="Add Another Profile">
+    Click the profile switcher in the top-right corner and select **Upload Another**
+  </Step>
+  
+  <Step title="Switch Between Profiles">
+    Use the dropdown to instantly switch dashboards
+  </Step>
+</Steps>
+
+<Info>
+Profiles are stored in browser localStorage. They persist across sessions but are device-specific.
+</Info>
+
+### Profile Storage
+
+Each profile is stored as:
+
+```typescript
+interface Profile {
+  id: string;               // UUID
+  name: string;             // Account UUID or "Profile 1"
+  data: DashboardData;      // Full export data
+  uploadedAt: string;       // ISO timestamp
+}
+```
+
+Profiles are saved to `localStorage.getItem('claude-analytics-profiles')`.
+
+<Warning>
+Browser storage limits vary (usually 5-10 MB). Large exports (> 5 MB) may fail to save.
+</Warning>
+
+## Privacy and Security
+
+### No Network Requests
+
+The hosted app makes **zero** network requests with your data:
+- No analytics/tracking (no Google Analytics, Mixpanel, etc.)
+- No error reporting (no Sentry, LogRocket, etc.)
+- No CDN uploads (everything processes in-memory)
+
+### Browser Console Verification
+
+You can verify this yourself:
+
+1. Open DevTools (F12) → **Network** tab
+2. Upload your file
+3. Check that no network activity occurs
+
+### Data Deletion
+
+To remove your data from the browser:
+
+```javascript
+// In browser console:
+localStorage.removeItem('claude-analytics-profiles');
+location.reload();
+```
+
+### localStorage Risks
+
+While data stays local, be aware:
+- Browser extensions can access localStorage
+- Shared computers may expose data to other users
+- localStorage is not encrypted at rest
+
+<Tip>
+For maximum privacy, use local mode instead of hosted mode. See [Local Mode Setup](/setup/local-mode).
+</Tip>
+
+## File Size Optimization
+
+If your export is too large (> 5 MB), consider:
+
+### 1. Filtering Old History
+
+Modify `scripts/export.mjs` to only include recent prompts:
+
+```javascript
+// Keep only last 1000 entries
+history = history.slice(-1000);
+```
+
+### 2. Excluding Memories
+
+Comment out the memory export section (lines 74-99 in `export.mjs`):
+
+```javascript
+// let memories = [];
+// try { ... } catch { ... }
+```
+
+### 3. Compressing the File
+
+The export script doesn't compress JSON. You can manually compress:
+
+```bash
+gzip claude-analytics-export.json
+```
+
+Then decompress before upload:
+
+```bash
+gunzip claude-analytics-export.json.gz
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="File upload fails or shows error">
+    Check that the file:
+    - Is valid JSON (run `cat file.json | jq` to validate)
+    - Contains either `stats` or `sessions` field
+    - Was generated by `scripts/export.mjs` (not manually edited)
+    
+    Try re-exporting:
+    ```bash
+    node scripts/export.mjs
+    ```
+  </Accordion>
+  
+  <Accordion title="Dashboard is empty after upload">
+    Your export may contain valid JSON but no actual data. Check the file size:
+    
+    ```bash
+    ls -lh claude-analytics-export.json
+    ```
+    
+    If it's < 1 KB, you likely haven't used Claude Code enough to generate data.
+  </Accordion>
+  
+  <Accordion title="Profile won't save (localStorage full)">
+    Clear old profiles:
+    
+    1. Open DevTools → **Application** → **Local Storage**
+    2. Delete `claude-analytics-profiles` entry
+    3. Refresh and re-upload
+  </Accordion>
+  
+  <Accordion title="Can't switch between profiles">
+    Ensure you're using a modern browser:
+    - Chrome 90+
+    - Firefox 88+
+    - Safari 14+
+    
+    Older browsers may not support required JavaScript features.
+  </Accordion>
+</AccordionGroup>
+
+## Comparison: Local vs Hosted
+
+| Feature | Local Mode | Hosted Mode |
+|---------|------------|-------------|
+| **Setup** | Clone + install + run | Export + upload |
+| **Data access** | Direct filesystem reads | Upload JSON file |
+| **Conversation messages** | ✓ Available | ✗ Not included |
+| **Privacy** | 100% offline | Client-side only |
+| **Multi-profile** | Manual switching | Built-in UI |
+| **Performance** | Fast (< 200ms load) | Instant (pre-loaded) |
+| **Portability** | Machine-specific | Works anywhere |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Export Script Deep Dive" icon="code" href="/setup/export-data">
+    Understand what the export script does under the hood
+  </Card>
+  <Card title="Features Overview" icon="grid" href="/features/overview">
+    Explore all available analytics features
+  </Card>
+  <Card title="Multi-Profile Guide" icon="users" href="/features/multi-profile">
+    Learn how to manage multiple Claude accounts
+  </Card>
+  <Card title="Privacy & Security" icon="shield" href="/guides/privacy-security">
+    Deep dive into data security guarantees
+  </Card>
+</CardGroup>

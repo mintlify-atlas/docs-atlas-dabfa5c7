@@ -1,0 +1,237 @@
+---
+title: Cost Tracking
+description: Monitor API costs with detailed breakdowns by model and usage type
+---
+
+Cost Tracking helps you understand your Claude API expenses with detailed breakdowns by model, token type, and time period.
+
+## Cost Overview Card
+
+The dashboard displays total cost in the stats overview section.
+
+### Implementation
+
+From `src/components/stats-overview.tsx:41`:
+
+```typescript
+const totalCost = stats
+  ? Object.values(stats.modelUsage).reduce((a, u) => a + (u.costUSD ?? 0), 0)
+  : 0;
+const modelCount = stats ? Object.keys(stats.modelUsage).length : 0;
+```
+
+The cost card shows:
+- **Total Cost**: Formatted USD amount (`formatCost` utility)
+- **Model Count**: Number of different models used
+- Click to navigate to detailed model analytics
+
+```typescript
+{
+  title: "Total Cost",
+  value: formatCost(totalCost),
+  sub: `across ${modelCount} model${modelCount !== 1 ? "s" : ""}`,
+  icon: DollarSign,
+  tab: "models",
+}
+```
+
+## Cost Calculation
+
+Costs are calculated based on token usage and model-specific pricing.
+
+### Token Types and Pricing
+
+Claude API charges different rates for different token types:
+
+1. **Input tokens**: Standard rate for prompt text
+2. **Output tokens**: Higher rate for generated text
+3. **Cache read tokens**: Reduced rate (90% cheaper)
+4. **Cache creation tokens**: Additional cost for writing to cache
+
+### Cost Data Structure
+
+Costs are stored per model in the `ModelUsage` interface (`src/lib/types.ts:48`):
+
+```typescript
+export interface ModelUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadInputTokens: number;
+  cacheCreationInputTokens: number;
+  webSearchRequests: number;
+  costUSD?: number;  // Pre-calculated total cost
+  contextWindow?: number;
+  maxOutputTokens?: number;
+}
+```
+
+<Note>
+  The `costUSD` field contains the pre-calculated total cost for all token types and web searches for that model.
+</Note>
+
+## Cost Breakdown Table
+
+Detailed cost information appears in the Token Details table within Model Analytics.
+
+### Table Structure
+
+From `src/components/model-breakdown.tsx:126`:
+
+```typescript
+const tokenTable = Object.entries(stats.modelUsage).map(([model, usage]) => ({
+  name: formatModelName(model),
+  input: usage.inputTokens,
+  output: usage.outputTokens,
+  cacheRead: usage.cacheReadInputTokens,
+  cacheCreate: usage.cacheCreationInputTokens,
+  cost: usage.costUSD ?? 0,
+  webSearches: usage.webSearchRequests ?? 0,
+}));
+```
+
+### Per-Model Costs
+
+Each row shows:
+- Individual model costs
+- Token counts that contributed to the cost
+- Web search request counts (if applicable)
+
+### Total Row
+
+The table footer sums costs across all models:
+
+```typescript
+const totalCost = tokenTable.reduce((a, r) => a + r.cost, 0);
+
+<tr className="border-t font-medium">
+  <td className="pt-3 pr-4">Total</td>
+  {/* ... token columns ... */}
+  <td className="pt-3 pr-4 text-right font-mono text-xs">
+    {formatCost(totalCost)}
+  </td>
+  {hasWebSearches && <td className="pt-3 text-right font-mono text-xs">
+    {tokenTable.reduce((a, r) => a + r.webSearches, 0)}
+  </td>}
+</tr>
+```
+
+## Cost Formatting
+
+Costs are consistently formatted using the `formatCost` utility from `src/lib/utils.ts:22`:
+
+```typescript
+export function formatCost(usd: number): string {
+  return `$${usd.toFixed(2)}`;
+}
+```
+
+This ensures:
+- Dollar sign prefix
+- Two decimal places
+- Consistent formatting across the application
+
+## Cost Optimization Insights
+
+### Prompt Caching Benefits
+
+The Token Details table makes it easy to see cache efficiency:
+
+- **Cache Read tokens**: Show how much context is being reused
+- **Standard Input tokens**: Show fresh context costs
+- **Ratio**: Compare cache reads to standard inputs for efficiency
+
+<Tip>
+  A high ratio of cache read tokens to standard input tokens indicates efficient prompt caching, which can reduce costs by up to 90% for repeated context.
+</Tip>
+
+### Model Selection
+
+The cost breakdown helps identify:
+- Which models consume the most budget
+- Whether cheaper models could handle certain tasks
+- Cost per session or per project
+
+## Web Search Costs
+
+If you use Claude's web search feature, costs are tracked separately.
+
+### Display Logic
+
+The web search column appears conditionally:
+
+```typescript
+const hasWebSearches = tokenTable.some((r) => r.webSearches > 0);
+
+// In table header
+{hasWebSearches && <th className="pb-3 text-right">Web Searches</th>}
+
+// In table rows
+{hasWebSearches && <td className="py-3 text-right font-mono text-xs">
+  {row.webSearches}
+</td>}
+```
+
+### Cost Inclusion
+
+Web search costs are included in the `costUSD` field alongside token costs.
+
+## Historical Cost Tracking
+
+While not explicitly visualized in a dedicated chart, cost data can be derived from:
+
+1. **Daily Token Usage Chart**: Multiply daily tokens by model rates
+2. **Session Explorer**: View per-session token usage and calculate costs
+3. **Activity Tracking**: Correlate activity patterns with spending
+
+## Accessing Cost Information
+
+### Quick View
+
+Click the "Total Cost" card in the stats overview to jump to Model Analytics:
+
+```typescript
+<Card
+  key={card.title}
+  className="cursor-pointer transition-all duration-200 hover:scale-[1.02]"
+  onClick={() => onNavigate(card.tab)}
+>
+```
+
+### Detailed View
+
+Navigate to the "Models" tab for comprehensive cost breakdowns:
+
+```typescript
+<TabsContent value="models" className="mt-6 space-y-6">
+  <DailyTokensChart stats={data.stats} />
+  <ModelBreakdown stats={data.stats} />
+</TabsContent>
+```
+
+## Cost Data Source
+
+Costs are calculated during stats cache generation from:
+- Session metadata files in `~/.config/Claude Code/sessions/`
+- Token usage recorded in each session
+- Known model pricing (built into the analytics system)
+
+<Accordion title="Session Token Fields">
+  Each session file tracks token usage:
+  
+  ```typescript
+  export interface SessionMeta {
+    session_id: string;
+    input_tokens: number;
+    output_tokens: number;
+    // ... other fields
+  }
+  ```
+  
+  These values are aggregated across all sessions and combined with model pricing to calculate costs.
+</Accordion>
+
+## Related Features
+
+- [Model Analytics](/features/model-analytics) - Full token and cost breakdown
+- [Session Explorer](/features/session-explorer) - Per-session token usage
+- [Activity Tracking](/features/activity-tracking) - Temporal cost patterns

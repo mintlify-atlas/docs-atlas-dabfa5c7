@@ -1,0 +1,272 @@
+---
+title: Model Analytics
+description: Track token usage, costs, and performance across Claude models
+---
+
+Model Analytics provides detailed insights into how different Claude models are used, including token consumption patterns and cost breakdowns.
+
+## Model Usage Distribution
+
+A pie chart visualization shows the proportion of tokens used by each model.
+
+### Implementation
+
+From `src/components/model-breakdown.tsx:30`, the component aggregates token data:
+
+```typescript
+export function ModelBreakdown({ stats }: { stats: StatsCache | null }) {
+  const pieData = Object.entries(stats.modelUsage).map(([model, usage]) => ({
+    name: formatModelName(model),
+    value: usage.outputTokens + usage.inputTokens,
+  }));
+}
+```
+
+### Model Name Formatting
+
+Model identifiers are transformed into readable names:
+
+```typescript
+function formatModelName(name: string): string {
+  return name
+    .replace("claude-", "")           // Remove "claude-" prefix
+    .replace(/-\d{8}$/, "")            // Remove date suffix
+    .replace(/-(\d+)-(\d+)$/, " $1.$2") // Convert version numbers
+    .replace(/-/g, " ")                // Replace hyphens with spaces
+    .replace(/\b\w/g, (c) => c.toUpperCase()); // Capitalize words
+}
+```
+
+Examples:
+- `claude-4.5-sonnet-20250514` → "4.5 Sonnet"
+- `claude-opus-3.0` → "Opus 3.0"
+
+### Color Scheme
+
+The pie chart uses a grayscale palette:
+
+```typescript
+const COLORS = ["#ffffff", "#d1d5db", "#9ca3af", "#6b7280", "#e5e7eb"];
+```
+
+### Chart Configuration
+
+The pie chart features:
+- Inner radius of 60px (donut style)
+- Outer radius of 100px
+- Labels for each model segment
+- Dark-themed tooltip with formatted token counts
+
+## Output Tokens by Model
+
+A stacked bar chart compares input vs. output tokens across models.
+
+### Data Structure
+
+The chart includes all token types:
+
+```typescript
+const barData = Object.entries(stats.modelUsage).map(([model, usage]) => ({
+  name: formatModelName(model),
+  input: usage.inputTokens,
+  output: usage.outputTokens,
+  cacheRead: usage.cacheReadInputTokens,
+  cacheCreate: usage.cacheCreationInputTokens,
+}));
+```
+
+### Visualization
+
+Two bars are displayed per model:
+- **Output tokens**: White (`#ffffff`) bars
+- **Input tokens**: Gray (`#9ca3af`) bars
+
+Both use rounded corners (`radius={[4, 4, 0, 0]}`) for a modern appearance.
+
+## Token Details Table
+
+A comprehensive table breaks down all token types and costs.
+
+### Columns
+
+The table displays:
+
+1. **Model**: Formatted model name
+2. **Input**: Standard input tokens
+3. **Output**: Generated output tokens
+4. **Cache Read**: Tokens read from prompt cache (cost savings)
+5. **Cache Create**: Tokens written to prompt cache
+6. **Cost**: Total USD cost for this model
+7. **Web Searches**: (optional) Number of web search requests
+
+From `src/components/model-breakdown.tsx:132`:
+
+```typescript
+<table className="w-full text-sm">
+  <thead>
+    <tr className="border-b text-left text-muted-foreground">
+      <th className="pb-3 pr-4">Model</th>
+      <th className="pb-3 pr-4 text-right">Input</th>
+      <th className="pb-3 pr-4 text-right">Output</th>
+      <th className="pb-3 pr-4 text-right">Cache Read</th>
+      <th className="pb-3 pr-4 text-right">Cache Create</th>
+      <th className="pb-3 pr-4 text-right">Cost</th>
+      {hasWebSearches && <th className="pb-3 text-right">Web Searches</th>}
+    </tr>
+  </thead>
+</table>
+```
+
+### Number Formatting
+
+Tokens are formatted with the `formatTokens` utility from `src/lib/utils.ts:8`:
+
+```typescript
+export function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+```
+
+Costs use the `formatCost` utility:
+
+```typescript
+export function formatCost(usd: number): string {
+  return `$${usd.toFixed(2)}`;
+}
+```
+
+### Total Row
+
+The table includes a totals row summing all metrics:
+
+```typescript
+<tr className="border-t font-medium">
+  <td className="pt-3 pr-4">Total</td>
+  <td className="pt-3 pr-4 text-right font-mono text-xs">
+    {formatTokens(tokenTable.reduce((a, r) => a + r.input, 0))}
+  </td>
+  <td className="pt-3 pr-4 text-right font-mono text-xs">
+    {formatTokens(tokenTable.reduce((a, r) => a + r.output, 0))}
+  </td>
+  {/* ... more columns */}
+</tr>
+```
+
+## Daily Token Usage Chart
+
+Tracks token consumption over time with model-level granularity.
+
+### Implementation
+
+From `src/components/daily-tokens-chart.tsx:27`:
+
+```typescript
+export function DailyTokensChart({ stats }: { stats: StatsCache | null }) {
+  if (!stats?.dailyModelTokens?.length) return null;
+
+  const models = new Set<string>();
+  for (const day of stats.dailyModelTokens) {
+    for (const model of Object.keys(day.tokensByModel)) {
+      models.add(model);
+    }
+  }
+
+  const chartData = stats.dailyModelTokens.map((day) => {
+    const entry: Record<string, string | number> = {
+      date: day.date.slice(5), // Show MM-DD only
+    };
+    for (const model of modelList) {
+      entry[model] = day.tokensByModel[model] ?? 0;
+    }
+    return entry;
+  });
+}
+```
+
+### Chart Type
+
+The component uses a stacked area chart to show cumulative token usage:
+
+```typescript
+<AreaChart data={chartData}>
+  {modelList.map((model, i) => (
+    <Area
+      key={model}
+      type="monotone"
+      dataKey={model}
+      stackId="1"
+      stroke={AREA_COLORS[i % AREA_COLORS.length]}
+      fill={AREA_COLORS[i % AREA_COLORS.length]}
+      fillOpacity={0.3}
+      name={model}
+    />
+  ))}
+</AreaChart>
+```
+
+### Data Source
+
+Daily token data comes from the `DailyModelTokens` type (`src/lib/types.ts:43`):
+
+```typescript
+export interface DailyModelTokens {
+  date: string;
+  tokensByModel: Record<string, number>;
+}
+```
+
+## Model Usage Data Structure
+
+All model analytics consume the `ModelUsage` interface from `src/lib/types.ts:48`:
+
+```typescript
+export interface ModelUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadInputTokens: number;
+  cacheCreationInputTokens: number;
+  webSearchRequests: number;
+  costUSD?: number;
+  contextWindow?: number;
+  maxOutputTokens?: number;
+}
+```
+
+<Note>
+  Cache read tokens are significantly cheaper than standard input tokens. The cache system can reduce costs by up to 90% for repeated context.
+</Note>
+
+## Layout Organization
+
+The Model Analytics view is organized in a responsive grid:
+
+```typescript
+<div className="space-y-6">
+  <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+    <Card>{/* Model Usage Distribution Pie Chart */}</Card>
+    <Card>{/* Output Tokens by Model Bar Chart */}</Card>
+  </div>
+  <Card>{/* Token Details Table */}</Card>
+</div>
+```
+
+On large screens, charts appear side-by-side. On mobile, they stack vertically.
+
+## Accessing Model Analytics
+
+Model analytics are available in the "Models" tab of the main dashboard:
+
+```typescript
+<TabsContent value="models" className="mt-6 space-y-6">
+  <DailyTokensChart stats={data.stats} />
+  <ModelBreakdown stats={data.stats} />
+</TabsContent>
+```
+
+## Related Features
+
+- [Cost Tracking](/features/cost-tracking) - Focused view of API costs
+- [Activity Tracking](/features/activity-tracking) - See when tokens are used
+- [Session Explorer](/features/session-explorer) - View per-session token usage

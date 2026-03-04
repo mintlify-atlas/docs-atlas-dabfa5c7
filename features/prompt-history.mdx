@@ -1,0 +1,326 @@
+---
+title: Prompt History
+description: Search and browse your complete prompt history across all projects
+---
+
+Prompt History provides a searchable archive of every prompt you've sent to Claude, independent of session context.
+
+## History List
+
+The prompt history component displays all prompts in reverse chronological order (newest first).
+
+### Implementation
+
+From `src/components/prompt-history.tsx:10`:
+
+```typescript
+export function PromptHistory({ history }: { history: HistoryEntry[] }) {
+  const [search, setSearch] = useState("");
+  const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+
+  const filtered = history
+    .filter(
+      (h) =>
+        h.display &&
+        h.display.trim().length > 0 &&
+        !h.display.startsWith("/login") &&
+        h.display.toLowerCase().includes(search.toLowerCase())
+    )
+    .reverse();
+}
+```
+
+### Filtering Logic
+
+Prompts are filtered to exclude:
+- Empty prompts
+- Login commands (`/login`)
+- Prompts that don't match the search query
+
+### Display Limit
+
+For performance, only the first 200 filtered prompts are rendered:
+
+```typescript
+{filtered.slice(0, 200).map((h, i) => (
+  // Prompt card
+))}
+```
+
+## Search Functionality
+
+A real-time search input filters prompts by content:
+
+```typescript
+<input
+  type="text"
+  placeholder="Search prompts..."
+  value={search}
+  onChange={(e) => setSearch(e.target.value)}
+  className="mt-2 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+/>
+```
+
+Search is:
+- Case-insensitive
+- Updates as you type
+- Searches full prompt text
+
+## Prompt Display
+
+Each prompt is shown in a card with metadata and expansion controls.
+
+### Truncation
+
+Long prompts are automatically truncated:
+
+```typescript
+const isLong = h.display.length > 120;
+
+<p className={`text-sm text-gray-200 ${isExpanded ? "whitespace-pre-wrap" : "line-clamp-2"}`}>
+  {isExpanded ? h.display : h.display.slice(0, 200)}
+  {!isExpanded && h.display.length > 200 ? "..." : ""}
+</p>
+```
+
+Prompts display:
+- **Collapsed**: First 200 characters with line clamping
+- **Expanded**: Full text with preserved whitespace
+
+### Expansion Controls
+
+Prompts longer than 120 characters show chevron icons:
+
+```typescript
+<div className="mt-0.5 text-gray-500">
+  {isLong ? (
+    isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />
+  ) : (
+    <div className="h-4 w-4" />
+  )}
+</div>
+```
+
+Click anywhere on the card to toggle expansion.
+
+## Metadata Display
+
+Each prompt shows contextual information:
+
+### Timestamp
+
+Formatted date and time:
+
+```typescript
+<span className="text-xs text-gray-500">
+  {new Date(h.timestamp).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })}
+</span>
+```
+
+Example output: "Jan 15, 10:30 AM"
+
+### Project Badge
+
+Shows the project name extracted from the path:
+
+```typescript
+<Badge variant="outline" className="text-xs">
+  {h.project?.split("/").pop() || "unknown"}
+</Badge>
+```
+
+### Character Count
+
+Displays prompt length:
+
+```typescript
+<span className="text-xs text-gray-600">
+  {h.display.length} chars
+</span>
+```
+
+## Copy Functionality
+
+A copy button allows quick reuse of prompts.
+
+### Copy Implementation
+
+From `src/components/prompt-history.tsx:25`:
+
+```typescript
+const handleCopy = (text: string, index: number) => {
+  navigator.clipboard.writeText(text);
+  setCopiedIndex(index);
+  setTimeout(() => setCopiedIndex(null), 2000);
+};
+```
+
+### Copy Button UI
+
+The button appears on hover with visual feedback:
+
+```typescript
+<button
+  className="shrink-0 rounded p-1 opacity-0 transition-opacity hover:bg-white/10 group-hover:opacity-100"
+  onClick={(e) => {
+    e.stopPropagation();
+    handleCopy(h.display, i);
+  }}
+  title="Copy prompt"
+>
+  {copiedIndex === i ? (
+    <Check className="h-4 w-4 text-emerald-400" />
+  ) : (
+    <Copy className="h-4 w-4 text-gray-400" />
+  )}
+</button>
+```
+
+Features:
+- Hidden by default, visible on card hover
+- Shows check icon for 2 seconds after copying
+- Click doesn't trigger card expansion (via `stopPropagation`)
+
+## History Data Structure
+
+Prompts use the `HistoryEntry` interface from `src/lib/types.ts:29`:
+
+```typescript
+export interface HistoryEntry {
+  display: string;
+  pastedContents: Record<string, unknown>;
+  timestamp: number;
+  project: string;
+}
+```
+
+### Fields
+
+- **display**: The prompt text shown to the user
+- **pastedContents**: Metadata about pasted/attached content
+- **timestamp**: Unix timestamp in milliseconds
+- **project**: Full project path
+
+## Scrollable Container
+
+The history list uses a fixed-height scroll area:
+
+```typescript
+<ScrollArea className="h-[600px]">
+  <div className="space-y-2">
+    {filtered.slice(0, 200).map((h, i) => (
+      // Prompt card
+    ))}
+  </div>
+</ScrollArea>
+```
+
+This provides:
+- Consistent viewport height
+- Smooth scrolling
+- Better performance with large histories
+
+## Counter Display
+
+The card header shows the filtered count:
+
+```typescript
+<CardTitle>Prompt History ({filtered.length} prompts)</CardTitle>
+```
+
+This updates dynamically as you search.
+
+## Project Filtering
+
+When a project is selected in the dashboard, history is filtered:
+
+```typescript
+// From dashboard.tsx:66
+const filteredHistory = useMemo(
+  () =>
+    selectedProject === "all"
+      ? data.history
+      : data.history.filter((h) => h.project === selectedProject),
+  [data.history, selectedProject]
+);
+```
+
+This allows you to:
+- View prompts from all projects
+- Focus on a specific project's prompt history
+- See how prompts differ across projects
+
+## Accessing Prompt History
+
+Prompt history appears in the "Prompts" tab:
+
+```typescript
+<TabsContent value="history" className="mt-6">
+  <PromptHistory history={filteredHistory} />
+</TabsContent>
+```
+
+### Stats Overview Integration
+
+Total message count in the stats overview includes prompts:
+
+```typescript
+const totalMessages = stats?.totalMessages ?? 0;
+
+{
+  title: "Messages",
+  value: totalMessages.toLocaleString(),
+  sub: `${Math.round(totalMessages / Math.max(totalSessions, 1))}/session avg`,
+  icon: MessageSquare,
+  tab: "history",
+}
+```
+
+Clicking this card navigates to the prompts view.
+
+## Data Source
+
+Prompt history is loaded from:
+- Global history file: `~/.config/Claude Code/User/History/history.json`
+- Contains all prompts across all projects and sessions
+- Updated in real-time as you use Claude
+
+<Note>
+  The history file includes prompts from the current session, even before the session is finalized. This provides a complete view of your interaction history.
+</Note>
+
+## Use Cases
+
+### Find Effective Prompts
+
+Search for prompts that worked well:
+```
+"refactor to use"
+```
+
+### Reuse Complex Instructions
+
+Copy multi-line prompts for similar tasks:
+```
+"Create a React component that..."
+```
+
+### Track Prompt Evolution
+
+See how your prompting style has changed over time by browsing chronologically.
+
+### Project-Specific Patterns
+
+Filter by project to understand project-specific prompt patterns.
+
+## Related Features
+
+- [Session Explorer](/features/session-explorer) - View prompts in session context
+- [Activity Tracking](/features/activity-tracking) - See when you're prompting most
+- [Multi-Profile](/features/multi-profile) - Compare prompt patterns across profiles

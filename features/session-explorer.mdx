@@ -1,0 +1,262 @@
+---
+title: Session Explorer
+description: Browse, search, and analyze your coding sessions in detail
+---
+
+The Session Explorer provides a comprehensive view of all your coding sessions with Claude, including full conversation history and detailed metrics.
+
+## Session List
+
+The main session list is implemented in `src/components/session-table.tsx:10` and provides a searchable, expandable interface.
+
+### Session Metadata
+
+Each session displays:
+
+- **First prompt**: The initial user message (or "(empty session)" if none)
+- **Project path**: Last two segments of the project directory
+- **Timestamp**: Date and time the session started
+- **Duration**: Total session length in minutes
+- **Message count**: Combined user and assistant messages
+
+### Session Badges
+
+Badges provide quick insights into session activity:
+
+```typescript
+// Message count badge
+<Badge variant="secondary">
+  {s.user_message_count + s.assistant_message_count} msgs
+</Badge>
+
+// Code changes
+{s.lines_added > 0 && (
+  <Badge variant="secondary" className="!text-emerald-400">
+    +{s.lines_added}
+  </Badge>
+)}
+{s.lines_removed > 0 && (
+  <Badge variant="secondary" className="!text-red-400">
+    -{s.lines_removed}
+  </Badge>
+)}
+
+// Git activity
+{s.git_commits > 0 && (
+  <Badge variant="secondary">
+    {s.git_commits} commit{s.git_commits > 1 ? "s" : ""}
+  </Badge>
+)}
+
+// Language usage
+{Object.entries(s.languages).map(([lang, count]) => (
+  <Badge key={lang} variant="outline">
+    {lang}: {count}
+  </Badge>
+))}
+```
+
+### Feature Detection Badges
+
+Special badges indicate advanced feature usage:
+
+- **web search**: Session used web search functionality
+- **MCP**: Session used Model Context Protocol servers
+- **agents**: Session used the task agent system
+- **X errors**: Number of tool execution errors (destructive variant)
+
+From `src/components/session-table.tsx:139`:
+
+```typescript
+{s.uses_web_search && <Badge variant="outline">web search</Badge>}
+{s.uses_mcp && <Badge variant="outline">MCP</Badge>}
+{s.uses_task_agent && <Badge variant="outline">agents</Badge>}
+```
+
+## Search Functionality
+
+The search input filters sessions in real-time by prompt content or project path:
+
+```typescript
+const filtered = sessions.filter(
+  (s) =>
+    s.first_prompt.toLowerCase().includes(search.toLowerCase()) ||
+    s.project_path.toLowerCase().includes(search.toLowerCase())
+);
+```
+
+<Tip>
+  Search is case-insensitive and searches both the prompt text and project path simultaneously.
+</Tip>
+
+## Expandable Session Details
+
+Clicking any session expands it to reveal detailed information.
+
+### Token Statistics
+
+The expanded view shows a two-column grid of token metrics (`src/components/session-table.tsx:153`):
+
+- User messages count
+- Assistant messages count
+- Input tokens (with locale formatting)
+- Output tokens (with locale formatting)
+
+### Message Thread
+
+Each expanded session loads and displays the full conversation thread.
+
+#### Lazy Loading
+
+Messages are fetched on-demand when a session is expanded:
+
+```typescript
+const fetchMessages = useCallback(async (session: SessionMeta) => {
+  if (messages[session.session_id]) return;
+  setLoading(session.session_id);
+  try {
+    const params = new URLSearchParams({
+      session_id: session.session_id,
+      project_path: session.project_path,
+    });
+    const res = await fetch(`/api/session-messages?${params}`);
+    if (res.ok) {
+      const data = await res.json();
+      setMessages((prev) => ({ ...prev, [session.session_id]: data.messages }));
+    }
+  } finally {
+    setLoading(null);
+  }
+}, [messages]);
+```
+
+#### Message Display
+
+Messages are rendered by the `MessageBubble` component (`src/components/session-table.tsx:204`):
+
+**User messages** are displayed with:
+- User icon in a white/10 opacity background
+- "You" label
+- Full text content
+
+**Assistant messages** include:
+- Bot icon in a white/5 opacity background
+- "Claude" label
+- Text with subtle gray styling
+- Tool usage indicators
+
+#### Tool Usage Indicators
+
+When Claude uses tools, they appear as inline badges:
+
+```typescript
+{message.toolUse && message.toolUse.length > 0 && (
+  <div className="mt-1 flex flex-wrap gap-1">
+    {message.toolUse.map((tool) => (
+      <span
+        key={tool.id}
+        className="inline-flex items-center gap-1 rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-gray-500"
+      >
+        <Wrench className="h-2.5 w-2.5" />
+        {tool.name}
+      </span>
+    ))}
+  </div>
+)}
+```
+
+#### Long Message Handling
+
+Messages longer than 300 characters are truncated with a "click to expand" prompt:
+
+```typescript
+const isLong = message.text.length > 300;
+const displayText = expanded ? message.text : message.text.slice(0, 300);
+```
+
+Clicking the message toggles between truncated and full view.
+
+## Session Data Structure
+
+Sessions use the `SessionMeta` interface from `src/lib/types.ts:1`:
+
+```typescript
+export interface SessionMeta {
+  session_id: string;
+  project_path: string;
+  start_time: string;
+  duration_minutes: number;
+  user_message_count: number;
+  assistant_message_count: number;
+  tool_counts: Record<string, number>;
+  languages: Record<string, number>;
+  git_commits: number;
+  git_pushes: number;
+  input_tokens: number;
+  output_tokens: number;
+  first_prompt: string;
+  user_interruptions: number;
+  tool_errors: number;
+  tool_error_categories: Record<string, number>;
+  uses_task_agent: boolean;
+  uses_mcp: boolean;
+  uses_web_search: boolean;
+  uses_web_fetch: boolean;
+  lines_added: number;
+  lines_removed: number;
+  files_modified: number;
+  message_hours: number[];
+  user_message_timestamps: number[];
+}
+```
+
+Messages use the `SessionMessage` interface (`src/lib/types.ts:77`):
+
+```typescript
+export interface SessionMessage {
+  role: "user" | "assistant";
+  text: string;
+  timestamp: string;
+  toolUse?: { name: string; id: string }[];
+}
+```
+
+## Scrollable Container
+
+The session list uses a fixed-height scroll area for better navigation:
+
+```typescript
+<ScrollArea className="h-[600px]">
+  <div className="space-y-3">
+    {filtered.map((s) => (
+      // Session card
+    ))}
+  </div>
+</ScrollArea>
+```
+
+## Project Filtering
+
+When a project is selected in the dashboard header, only sessions from that project are shown:
+
+```typescript
+// From dashboard.tsx:58
+const filteredSessions = useMemo(
+  () =>
+    selectedProject === "all"
+      ? data.sessions
+      : data.sessions.filter((s) => s.project_path === selectedProject),
+  [data.sessions, selectedProject]
+);
+```
+
+<Note>
+  Sessions are sorted by start time with the most recent sessions appearing first.
+</Note>
+
+## Related Features
+
+- [Activity Tracking](/features/activity-tracking) - See when sessions occur
+- [Tool Usage](/features/tool-usage) - Analyze tools used across sessions
+- [Prompt History](/features/prompt-history) - Browse just the prompts without session context
+- [Cost Tracking](/features/cost-tracking) - View token costs per session

@@ -1,97 +1,265 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: Claude Analytics
+description: Visualize your Claude Code usage, sessions, costs, tokens, tools, and prompts with 100% client-side processing
+mode: custom
 ---
 
-## Setting up
+<div className="min-h-screen bg-[#0a0a0a] dark:bg-[#0a0a0a]">
+  {/* Hero Section */}
+  <div className="relative overflow-hidden bg-gradient-to-b from-[#0a0a0a] via-[#0a0a0a] to-[#0f1117] dark:from-[#0a0a0a] dark:via-[#0a0a0a] dark:to-[#0f1117] py-20 sm:py-24 lg:py-32">
+    <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-gray-700/20 via-transparent to-transparent"></div>
+    
+    <div className="relative mx-auto max-w-7xl px-6 lg:px-8">
+      <div className="mx-auto max-w-3xl text-center">
+        <h1 className="text-4xl font-bold tracking-tight text-white dark:text-white sm:text-5xl lg:text-6xl">
+          Visualize your Claude Code journey
+        </h1>
+        <p className="mt-6 text-lg leading-8 text-gray-400 dark:text-gray-400 max-w-2xl mx-auto">
+          A personal analytics dashboard for Claude Code sessions. Track your coding patterns, model usage, tool calls, spending, and prompt history — all from data stored locally on your machine.
+        </p>
+        <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
+          <a
+            href="/quickstart"
+            className="rounded-xl bg-[#7c7c7c] px-6 py-3 text-base font-semibold text-white shadow-sm hover:bg-[#6a6a6a] transition-colors"
+          >
+            Get started
+          </a>
+          <a
+            href="/features/overview"
+            className="rounded-xl border border-white/30 bg-white/10 px-6 py-3 text-base font-semibold text-white hover:bg-white/20 hover:border-white/40 transition-colors"
+          >
+            Explore features
+          </a>
+        </div>
+        <p className="mt-6 text-sm text-gray-500 dark:text-gray-500">
+          🔒 Your data never leaves your browser
+        </p>
+      </div>
+    </div>
+  </div>
 
-Get your documentation site up and running in minutes.
+  {/* Quick Start Section */}
+  <div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+    <div className="text-center mb-12">
+      <h2 className="text-2xl font-semibold text-gray-900 dark:text-white sm:text-3xl">
+        Get started in minutes
+      </h2>
+      <p className="mt-2 text-base text-gray-600 dark:text-gray-400">
+        Choose your preferred setup method
+      </p>
+    </div>
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+    <Steps>
+      <Step title="Run locally with auto-loaded data">
+        Clone the repository and start the development server. Your Claude Code data from `~/.claude/` is automatically loaded.
 
-## Make it yours
+        ```bash
+        git clone https://github.com/1shanpanta/claude-analytics.git
+        cd claude-analytics
+        npm install && npm run dev
+        ```
 
-Design a docs site that looks great and empowers your users.
+        Open `http://localhost:3000` to view your analytics dashboard.
+      </Step>
 
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
-  </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
-  </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
-  </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
+      <Step title="Or use hosted mode with export">
+        Export your data using the built-in script (uses only Node built-ins, no installation required):
 
-## Create beautiful pages
+        ```bash
+        git clone https://github.com/1shanpanta/claude-analytics.git
+        cd claude-analytics
+        node scripts/export.mjs
+        ```
 
-Everything you need to create world-class documentation.
+        <Note>
+          The script generates `claude-analytics-export.json` containing your stats, sessions, and history. Upload this file to the hosted version.
+        </Note>
+      </Step>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+      <Step title="Explore your analytics">
+        View activity heatmaps, session details, model costs, tool usage patterns, and your complete prompt history. All processing happens client-side for maximum privacy.
+      </Step>
+    </Steps>
+  </div>
 
-## Need inspiration?
+  {/* Features Section */}
+  <div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+    <div className="text-center mb-12">
+      <h2 className="text-2xl font-semibold text-gray-900 dark:text-white sm:text-3xl">
+        Comprehensive analytics
+      </h2>
+      <p className="mt-2 text-base text-gray-600 dark:text-gray-400">
+        Every metric you need to understand your Claude Code usage
+      </p>
+    </div>
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+    <CardGroup cols={3}>
+      <Card title="Activity tracking" icon="chart-line" href="/features/activity-tracking">
+        GitHub-style contribution heatmap showing daily message activity and sessions by hour
+      </Card>
+      <Card title="Session explorer" icon="table" href="/features/session-explorer">
+        Browse all sessions with expandable message threads and detailed metadata
+      </Card>
+      <Card title="Model analytics" icon="brain" href="/features/model-analytics">
+        Token usage breakdown with stacked area charts and cost tracking per model
+      </Card>
+      <Card title="Cost tracking" icon="dollar-sign" href="/features/cost-tracking">
+        Total spending across all models with detailed per-model cost breakdown
+      </Card>
+      <Card title="Tool usage" icon="wrench" href="/features/tool-usage">
+        See which tools (Read, Edit, Bash, etc.) you use most frequently
+      </Card>
+      <Card title="Prompt history" icon="clock-rotate-left" href="/features/prompt-history">
+        Searchable log of every prompt you've sent with copy-to-clipboard
+      </Card>
+      <Card title="Multi-profile" icon="users" href="/features/multi-profile">
+        Upload multiple export files and switch between different profiles
+      </Card>
+      <Card title="Project filtering" icon="filter" href="/guides/project-filtering">
+        Filter sessions, tools, and prompts by specific projects
+      </Card>
+      <Card title="Privacy focused" icon="shield-check" href="/guides/privacy-security">
+        100% client-side processing — no data leaves your browser
+      </Card>
+    </CardGroup>
+  </div>
+
+  {/* Data Sources Section */}
+  <div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+    <div className="text-center mb-12">
+      <h2 className="text-2xl font-semibold text-gray-900 dark:text-white sm:text-3xl">
+        Built on Claude Code's local data
+      </h2>
+      <p className="mt-2 text-base text-gray-600 dark:text-gray-400">
+        Everything is read from your `~/.claude/` directory
+      </p>
+    </div>
+
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <a href="/reference/data-sources/stats-cache" className="group block rounded-2xl border border-white/10 bg-white/5 dark:border-white/10 dark:bg-white/5 overflow-hidden no-underline hover:border-[#7c7c7c] dark:hover:border-[#7c7c7c] transition-colors">
+        <div className="p-6">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white">stats-cache.json</h3>
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Aggregated statistics, model usage, daily activity, and cost tracking</p>
+          <div className="mt-4 flex items-center text-sm text-gray-500 dark:text-gray-500 group-hover:text-[#7c7c7c] dark:group-hover:text-[#7c7c7c] transition-colors">
+            Learn more
+            <svg className="ml-1 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </div>
+        </div>
+      </a>
+
+      <a href="/reference/data-sources/session-meta" className="group block rounded-2xl border border-white/10 bg-white/5 dark:border-white/10 dark:bg-white/5 overflow-hidden no-underline hover:border-[#7c7c7c] dark:hover:border-[#7c7c7c] transition-colors">
+        <div className="p-6">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white">session-meta/*.json</h3>
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Per-session metadata including duration, tools used, lines changed, and commits</p>
+          <div className="mt-4 flex items-center text-sm text-gray-500 dark:text-gray-500 group-hover:text-[#7c7c7c] dark:group-hover:text-[#7c7c7c] transition-colors">
+            Learn more
+            <svg className="ml-1 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </div>
+        </div>
+      </a>
+
+      <a href="/reference/data-sources/history" className="group block rounded-2xl border border-white/10 bg-white/5 dark:border-white/10 dark:bg-white/5 overflow-hidden no-underline hover:border-[#7c7c7c] dark:hover:border-[#7c7c7c] transition-colors">
+        <div className="p-6">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white">history.jsonl</h3>
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Complete log of every prompt you've sent to Claude Code</p>
+          <div className="mt-4 flex items-center text-sm text-gray-500 dark:text-gray-500 group-hover:text-[#7c7c7c] dark:group-hover:text-[#7c7c7c] transition-colors">
+            Learn more
+            <svg className="ml-1 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </div>
+        </div>
+      </a>
+
+      <a href="/reference/data-sources/project-memory" className="group block rounded-2xl border border-white/10 bg-white/5 dark:border-white/10 dark:bg-white/5 overflow-hidden no-underline hover:border-[#7c7c7c] dark:hover:border-[#7c7c7c] transition-colors">
+        <div className="p-6">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white">projects/*/memory/*.md</h3>
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Project-specific memory files containing context and notes</p>
+          <div className="mt-4 flex items-center text-sm text-gray-500 dark:text-gray-500 group-hover:text-[#7c7c7c] dark:group-hover:text-[#7c7c7c] transition-colors">
+            Learn more
+            <svg className="ml-1 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </div>
+        </div>
+      </a>
+    </div>
+  </div>
+
+  {/* Tech Stack Section */}
+  <div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+    <div className="text-center mb-12">
+      <h2 className="text-2xl font-semibold text-gray-900 dark:text-white sm:text-3xl">
+        Built with modern web technologies
+      </h2>
+      <p className="mt-2 text-base text-gray-600 dark:text-gray-400">
+        Powered by Next.js, React, and shadcn/ui
+      </p>
+    </div>
+
+    <div className="rounded-2xl border border-white/10 bg-white/5 dark:border-white/10 dark:bg-white/5 p-8">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-6 text-center">
+        <div>
+          <div className="text-3xl mb-2">⚡</div>
+          <div className="font-semibold text-gray-900 dark:text-white">Next.js 16</div>
+          <div className="text-sm text-gray-600 dark:text-gray-400">App Router</div>
+        </div>
+        <div>
+          <div className="text-3xl mb-2">⚛️</div>
+          <div className="font-semibold text-gray-900 dark:text-white">React 19</div>
+          <div className="text-sm text-gray-600 dark:text-gray-400">Latest features</div>
+        </div>
+        <div>
+          <div className="text-3xl mb-2">🎨</div>
+          <div className="font-semibold text-gray-900 dark:text-white">Tailwind CSS 4</div>
+          <div className="text-sm text-gray-600 dark:text-gray-400">Modern styling</div>
+        </div>
+        <div>
+          <div className="text-3xl mb-2">🧩</div>
+          <div className="font-semibold text-gray-900 dark:text-white">shadcn/ui</div>
+          <div className="text-sm text-gray-600 dark:text-gray-400">Components</div>
+        </div>
+        <div>
+          <div className="text-3xl mb-2">📊</div>
+          <div className="font-semibold text-gray-900 dark:text-white">Recharts</div>
+          <div className="text-sm text-gray-600 dark:text-gray-400">Visualizations</div>
+        </div>
+        <div>
+          <div className="text-3xl mb-2">🚀</div>
+          <div className="font-semibold text-gray-900 dark:text-white">bun</div>
+          <div className="text-sm text-gray-600 dark:text-gray-400">Fast runtime</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {/* CTA Section */}
+  <div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+    <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-[#1a1d27] to-[#0f1117] dark:border-white/10 dark:from-[#1a1d27] dark:to-[#0f1117] p-12 text-center">
+      <h2 className="text-2xl font-semibold text-white dark:text-white sm:text-3xl">
+        Ready to visualize your coding patterns?
+      </h2>
+      <p className="mt-4 text-base text-gray-400 dark:text-gray-400 max-w-2xl mx-auto">
+        Start exploring your Claude Code analytics in minutes. No account required, no data uploaded.
+      </p>
+      <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
+        <a
+          href="/quickstart"
+          className="rounded-xl bg-[#7c7c7c] px-6 py-3 text-base font-semibold text-white shadow-sm hover:bg-[#6a6a6a] transition-colors"
+        >
+          Get started
+        </a>
+        <a
+          href="https://github.com/1shanpanta/claude-analytics"
+          className="rounded-xl border border-white/30 bg-white/10 px-6 py-3 text-base font-semibold text-white hover:bg-white/20 hover:border-white/40 transition-colors"
+        >
+          View on GitHub
+        </a>
+      </div>
+    </div>
+  </div>
+</div>

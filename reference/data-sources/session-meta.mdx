@@ -1,0 +1,289 @@
+---
+title: "session-meta/*.json"
+description: "Per-session metadata files containing activity, tool usage, and code changes"
+---
+
+## Overview
+
+Each coding session in Claude Code generates a metadata file that tracks detailed activity: message counts, tool calls, git operations, token usage, code changes, and timestamps. These files enable per-session analysis and aggregation.
+
+## File Location
+
+```
+~/.claude/usage-data/session-meta/<session-id>.json
+```
+
+Each session creates a separate JSON file named by its unique session ID.
+
+## File Format
+
+JSON format with a `SessionMeta` object per file.
+
+## Data Structure
+
+### SessionMeta Interface
+
+```typescript
+export interface SessionMeta {
+  session_id: string;
+  project_path: string;
+  start_time: string;
+  duration_minutes: number;
+  user_message_count: number;
+  assistant_message_count: number;
+  tool_counts: Record<string, number>;
+  languages: Record<string, number>;
+  git_commits: number;
+  git_pushes: number;
+  input_tokens: number;
+  output_tokens: number;
+  first_prompt: string;
+  user_interruptions: number;
+  tool_errors: number;
+  tool_error_categories: Record<string, number>;
+  uses_task_agent: boolean;
+  uses_mcp: boolean;
+  uses_web_search: boolean;
+  uses_web_fetch: boolean;
+  lines_added: number;
+  lines_removed: number;
+  files_modified: number;
+  message_hours: number[];
+  user_message_timestamps: number[];
+}
+```
+
+### Core Session Fields
+
+<ResponseField name="session_id" type="string" required>
+  Unique identifier for this coding session
+</ResponseField>
+
+<ResponseField name="project_path" type="string" required>
+  Absolute path to the project directory
+</ResponseField>
+
+<ResponseField name="start_time" type="string" required>
+  ISO 8601 timestamp when the session began
+</ResponseField>
+
+<ResponseField name="duration_minutes" type="number" required>
+  Total session duration in minutes
+</ResponseField>
+
+### Message Counts
+
+<ResponseField name="user_message_count" type="number" required>
+  Number of messages sent by the user
+</ResponseField>
+
+<ResponseField name="assistant_message_count" type="number" required>
+  Number of responses from Claude
+</ResponseField>
+
+<ResponseField name="first_prompt" type="string" required>
+  The initial user prompt that started the session
+</ResponseField>
+
+### Tool Usage
+
+<ResponseField name="tool_counts" type="Record<string, number>" required>
+  Number of invocations per tool. Keys are tool names like `"Read"`, `"Edit"`, `"Bash"`, `"Grep"`.
+</ResponseField>
+
+<ResponseField name="tool_errors" type="number" required>
+  Total number of tool invocations that resulted in errors
+</ResponseField>
+
+<ResponseField name="tool_error_categories" type="Record<string, number>" required>
+  Breakdown of errors by category (e.g., `"FileNotFound"`, `"PermissionDenied"`)
+</ResponseField>
+
+### Feature Flags
+
+<ResponseField name="uses_task_agent" type="boolean" required>
+  Whether the Task agent was invoked during this session
+</ResponseField>
+
+<ResponseField name="uses_mcp" type="boolean" required>
+  Whether Model Context Protocol servers were used
+</ResponseField>
+
+<ResponseField name="uses_web_search" type="boolean" required>
+  Whether web search was invoked
+</ResponseField>
+
+<ResponseField name="uses_web_fetch" type="boolean" required>
+  Whether WebFetch was used to retrieve external content
+</ResponseField>
+
+### Code Changes
+
+<ResponseField name="lines_added" type="number" required>
+  Total lines of code added across all files
+</ResponseField>
+
+<ResponseField name="lines_removed" type="number" required>
+  Total lines of code removed
+</ResponseField>
+
+<ResponseField name="files_modified" type="number" required>
+  Number of distinct files edited
+</ResponseField>
+
+<ResponseField name="languages" type="Record<string, number>" required>
+  Lines changed per programming language (e.g., `{"TypeScript": 245, "Python": 89}`)
+</ResponseField>
+
+### Git Operations
+
+<ResponseField name="git_commits" type="number" required>
+  Number of commits created during the session
+</ResponseField>
+
+<ResponseField name="git_pushes" type="number" required>
+  Number of git push operations
+</ResponseField>
+
+### Token Usage
+
+<ResponseField name="input_tokens" type="number" required>
+  Total input tokens consumed in this session
+</ResponseField>
+
+<ResponseField name="output_tokens" type="number" required>
+  Total output tokens generated
+</ResponseField>
+
+### Timestamps
+
+<ResponseField name="message_hours" type="number[]" required>
+  Array of hour values (0-23) when messages were sent. Used for hourly activity charts.
+</ResponseField>
+
+<ResponseField name="user_message_timestamps" type="number[]" required>
+  Unix timestamps (milliseconds) for each user message. Enables precise timing analysis.
+</ResponseField>
+
+<ResponseField name="user_interruptions" type="number" required>
+  Count of times the user interrupted Claude's response
+</ResponseField>
+
+## Loading Function
+
+From `src/lib/load-data.ts`:
+
+```typescript
+export function loadSessionMetas(): SessionMeta[] {
+  const dir = path.join(CLAUDE_DIR, "usage-data", "session-meta");
+  try {
+    const files = fs.readdirSync(dir).filter((f) => f.endsWith(".json"));
+    return files
+      .map((f) => {
+        try {
+          const raw = fs.readFileSync(path.join(dir, f), "utf-8");
+          return JSON.parse(raw) as SessionMeta;
+        } catch {
+          return null;
+        }
+      })
+      .filter((s): s is SessionMeta => s !== null && s.duration_minutes > 0)
+      .sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
+  } catch {
+    return [];
+  }
+}
+```
+
+The loader:
+1. Reads all `.json` files from the `session-meta` directory
+2. Parses each file, skipping any that fail
+3. Filters out sessions with zero duration (incomplete/corrupted)
+4. Sorts by start time (newest first)
+5. Returns an empty array if the directory doesn't exist
+
+## Usage in Export Script
+
+From `scripts/export.mjs`:
+
+```javascript
+// 2. Session metas
+let sessions = [];
+const metaDir = path.join(CLAUDE_DIR, "usage-data", "session-meta");
+try {
+  const files = fs.readdirSync(metaDir).filter((f) => f.endsWith(".json"));
+  for (const f of files) {
+    try {
+      const raw = fs.readFileSync(path.join(metaDir, f), "utf-8");
+      const meta = JSON.parse(raw);
+      if (meta.duration_minutes > 0) sessions.push(meta);
+    } catch { /* skip */ }
+  }
+  sessions.sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
+  console.log(`  session-meta/ ✓ (${sessions.length} sessions)`);
+} catch {
+  console.log("  session-meta/ ✗ (not found)");
+}
+```
+
+The export script:
+1. Reads all session metadata files
+2. Filters valid sessions (duration > 0)
+3. Sorts chronologically
+4. Logs the count of sessions found
+5. Includes the array in the export bundle
+
+## Use Cases
+
+- **Session Explorer**: Browse and expand individual sessions
+- **Tool Usage Charts**: Aggregate `tool_counts` across sessions
+- **Project Breakdown**: Group sessions by `project_path`
+- **Language Analysis**: Sum `languages` to see which languages you work with most
+- **Activity Patterns**: Use `message_hours` to build hour-of-day distributions
+- **Git Activity**: Track commits and pushes over time
+- **Cost Estimation**: Combine `input_tokens` and `output_tokens` with pricing data
+
+## Example Session Meta
+
+```json
+{
+  "session_id": "01J9XQZK2MFBQW8VHPTC7XRNZS",
+  "project_path": "/home/user/projects/my-app",
+  "start_time": "2026-03-04T14:23:17.892Z",
+  "duration_minutes": 47,
+  "user_message_count": 23,
+  "assistant_message_count": 23,
+  "tool_counts": {
+    "Read": 45,
+    "Edit": 12,
+    "Bash": 8,
+    "Grep": 3
+  },
+  "languages": {
+    "TypeScript": 245,
+    "JSON": 18
+  },
+  "git_commits": 3,
+  "git_pushes": 1,
+  "input_tokens": 125430,
+  "output_tokens": 34210,
+  "first_prompt": "Add user authentication to the API",
+  "user_interruptions": 2,
+  "tool_errors": 1,
+  "tool_error_categories": {"FileNotFound": 1},
+  "uses_task_agent": false,
+  "uses_mcp": true,
+  "uses_web_search": false,
+  "uses_web_fetch": false,
+  "lines_added": 263,
+  "lines_removed": 18,
+  "files_modified": 7,
+  "message_hours": [14, 14, 14, 15, 15],
+  "user_message_timestamps": [1709561997892, 1709562145223]
+}
+```
+
+## Related Data Sources
+
+- [stats-cache](/reference/data-sources/stats-cache) - Aggregated statistics across all sessions
+- [history](/reference/data-sources/history) - Complete prompt history

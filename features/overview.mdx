@@ -1,0 +1,83 @@
+---
+title: Features Overview
+description: Comprehensive analytics and insights for your Claude coding sessions
+---
+
+Claude Analytics provides a complete suite of features to help you understand your coding patterns, track your productivity, and optimize your workflow with Claude.
+
+## Core Features
+
+<CardGroup cols={2}>
+  <Card title="Activity Tracking" icon="chart-line" href="/features/activity-tracking">
+    Visualize your daily coding activity with an interactive heatmap and hourly breakdown
+  </Card>
+  <Card title="Session Explorer" icon="list" href="/features/session-explorer">
+    Browse and search through all your coding sessions with detailed metrics
+  </Card>
+  <Card title="Model Analytics" icon="brain" href="/features/model-analytics">
+    Track token usage, costs, and performance across different Claude models
+  </Card>
+  <Card title="Cost Tracking" icon="dollar-sign" href="/features/cost-tracking">
+    Monitor your API costs with detailed breakdowns by model and usage type
+  </Card>
+  <Card title="Tool Usage" icon="wrench" href="/features/tool-usage">
+    Analyze which tools and languages you use most frequently
+  </Card>
+  <Card title="Prompt History" icon="history" href="/features/prompt-history">
+    Search and browse your complete prompt history across all sessions
+  </Card>
+  <Card title="Multi-Profile" icon="users" href="/features/multi-profile">
+    Compare analytics across different Claude profiles or workspaces
+  </Card>
+</CardGroup>
+
+## Dashboard Components
+
+The analytics dashboard is built from several interconnected components:
+
+### Stats Overview
+
+Get a high-level view of your coding activity with key metrics:
+
+- **Total Sessions**: Number of coding sessions and total time spent
+- **Messages**: Total messages exchanged with Claude
+- **Tool Calls**: Number of tool executions across all sessions
+- **Lines Changed**: Code additions and deletions
+- **Files Modified**: Number of files edited with commit counts
+- **Average Session**: Typical session duration and longest session
+- **Total Cost**: API costs across all models
+
+Each metric card is clickable and navigates to the relevant detailed view.
+
+### Data Sources
+
+Claude Analytics derives insights from:
+
+- **Session metadata**: Stored in `~/.config/Claude Code/sessions/`
+- **Message logs**: Complete conversation history for each session
+- **Prompt history**: Global prompt history from `~/.config/Claude Code/User/History/`
+- **Stats cache**: Pre-computed aggregated statistics for performance
+
+<Note>
+  All data is processed locally on your machine. No information is sent to external servers.
+</Note>
+
+## Navigation
+
+The dashboard uses a tab-based navigation system with five main sections:
+
+1. **Activity**: Heatmaps, hourly patterns, and project breakdowns
+2. **Sessions**: Searchable list of all coding sessions
+3. **Models**: Token usage charts and cost analysis
+4. **Tools**: Tool and language usage statistics
+5. **Prompts**: Searchable prompt history
+
+You can also filter all data by specific projects using the project selector in the header.
+
+## Next Steps
+
+Explore each feature in detail:
+
+- Learn about [Activity Tracking](/features/activity-tracking) to visualize your coding patterns
+- Discover [Session Explorer](/features/session-explorer) to analyze individual sessions
+- Understand [Model Analytics](/features/model-analytics) for token and cost insights

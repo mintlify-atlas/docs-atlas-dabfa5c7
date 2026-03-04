@@ -1,0 +1,295 @@
+---
+title: "projects/*/memory/*.md"
+description: "Project-specific memory files that Claude Code uses for context persistence"
+---
+
+## Overview
+
+Claude Code maintains project-specific memory files in Markdown format. These files store context, preferences, and learnings about each project to provide continuity across sessions. The analytics dashboard can read and display these memory files.
+
+## File Location
+
+```
+~/.claude/projects/<project-id>/memory/*.md
+```
+
+Each project gets its own subdirectory under `projects/`, and within that, a `memory/` folder containing one or more `.md` files.
+
+**Example structure**:
+```
+~/.claude/projects/
+├── 01J9XQZ123ABC/
+│   └── memory/
+│       ├── architecture.md
+│       ├── preferences.md
+│       └── tech-stack.md
+└── 01J9XYZ456DEF/
+    └── memory/
+        └── notes.md
+```
+
+## File Format
+
+Markdown (`.md`) files with plain text content. Each file can contain:
+- Project architecture notes
+- Code style preferences
+- Technology stack documentation
+- Important context for Claude
+- User-specific instructions
+
+## Data Structure
+
+### ProjectMemory Interface
+
+```typescript
+export interface ProjectMemory {
+  project: string;
+  files: { name: string; content: string }[];
+}
+```
+
+<ResponseField name="project" type="string" required>
+  The project identifier (typically the UUID or directory name)
+</ResponseField>
+
+<ResponseField name="files" type="array" required>
+  Array of memory files for this project
+  
+  <Expandable title="file object">
+    <ResponseField name="name" type="string">
+      Filename of the memory file (e.g., `"architecture.md"`, `"preferences.md"`)
+    </ResponseField>
+    <ResponseField name="content" type="string">
+      Full text content of the file, truncated to 5000 characters in exports
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Loading Function
+
+From `src/lib/load-data.ts`:
+
+```typescript
+export function loadProjectMemories(): ProjectMemory[] {
+  const dir = path.join(CLAUDE_DIR, "projects");
+  try {
+    const projects = fs.readdirSync(dir);
+    return projects.map((p) => {
+      const memDir = path.join(dir, p, "memory");
+      let files: { name: string; content: string }[] = [];
+      try {
+        const mdFiles = fs.readdirSync(memDir).filter((f) => f.endsWith(".md"));
+        files = mdFiles.map((f) => ({
+          name: f,
+          content: fs.readFileSync(path.join(memDir, f), "utf-8").slice(0, 5000),
+        }));
+      } catch {
+        /* no memory dir */
+      }
+      return { project: p, files };
+    }).filter(p => p.files.length > 0);
+  } catch {
+    return [];
+  }
+}
+```
+
+The loader:
+1. Lists all project directories under `~/.claude/projects/`
+2. For each project, checks if a `memory/` subdirectory exists
+3. Reads all `.md` files in the memory directory
+4. Truncates file content to 5000 characters (to limit export size)
+5. Filters out projects with no memory files
+6. Returns an empty array if the projects directory doesn't exist
+
+<Note>
+  Content is truncated to 5000 characters to prevent export files from becoming too large. The dashboard uses memory files for display and search, not for feeding back to Claude.
+</Note>
+
+## Usage in Export Script
+
+From `scripts/export.mjs`:
+
+```javascript
+// 5. Project memories (with file content)
+let memories = [];
+try {
+  const projectsDir = path.join(CLAUDE_DIR, "projects");
+  const projects = fs.readdirSync(projectsDir);
+  for (const p of projects) {
+    const memDir = path.join(projectsDir, p, "memory");
+    try {
+      const mdFiles = fs.readdirSync(memDir).filter((f) => f.endsWith(".md"));
+      if (mdFiles.length > 0) {
+        const files = mdFiles.map((f) => ({
+          name: f,
+          content: fs.readFileSync(path.join(memDir, f), "utf-8").slice(0, 5000),
+        }));
+        memories.push({ project: p, files });
+      }
+    } catch { /* no memory dir */ }
+  }
+  if (memories.length > 0) {
+    const totalFiles = memories.reduce((a, m) => a + m.files.length, 0);
+    console.log(`  memories ✓ (${totalFiles} files across ${memories.length} projects)`);
+  } else {
+    console.log("  memories ✗ (none found)");
+  }
+} catch {
+  console.log("  memories ✗ (projects dir not found)");
+}
+```
+
+The export script:
+1. Iterates through all projects
+2. Reads memory files from each project's `memory/` subdirectory
+3. Counts total memory files across all projects
+4. Logs a summary of files found
+5. Includes the memories array in the export bundle
+
+## Example Memory File
+
+**`~/.claude/projects/01J9XQZ123ABC/memory/architecture.md`**:
+
+```markdown
+# Architecture Overview
+
+This is a Next.js 15 application using:
+- App Router
+- React Server Components
+- Tailwind CSS 4
+- shadcn/ui components
+
+## Key Conventions
+
+- All API routes in `app/api/`
+- Components in `src/components/`
+- Use TypeScript strict mode
+- Prefer server components by default
+
+## Important Files
+
+- `src/lib/load-data.ts` — data loading functions
+- `src/lib/types.ts` — shared interfaces
+- `scripts/export.mjs` — CLI export tool
+```
+
+## Use Cases
+
+### Context Display
+
+The dashboard can display memory files to help you understand:
+- What Claude knows about your project
+- Preferences and conventions Claude is following
+- Project-specific context that persists across sessions
+
+### Memory Search
+
+Search across all project memories to find:
+- Architectural decisions
+- Coding preferences
+- Technology stack notes
+- Important context
+
+### Project Insights
+
+Analyze which projects have the most context:
+```typescript
+import { loadProjectMemories } from "./load-data";
+
+const memories = loadProjectMemories();
+
+// Projects with most memory files
+const ranked = memories
+  .map((m) => ({ project: m.project, fileCount: m.files.length }))
+  .sort((a, b) => b.fileCount - a.fileCount);
+
+console.log("Top projects by memory files:", ranked);
+```
+
+### Content Analysis
+
+Analyze memory content:
+```typescript
+// Total memory content size
+const totalChars = memories.reduce(
+  (sum, m) => sum + m.files.reduce((s, f) => s + f.content.length, 0),
+  0
+);
+
+// Average memory file size
+const totalFiles = memories.reduce((sum, m) => sum + m.files.length, 0);
+const avgSize = totalChars / totalFiles;
+
+console.log(`Average memory file size: ${avgSize.toFixed(0)} characters`);
+```
+
+## Memory File Types
+
+Common memory file names and their purposes:
+
+| Filename | Purpose |
+|----------|----------|
+| `architecture.md` | High-level system design and structure |
+| `preferences.md` | Code style and user preferences |
+| `tech-stack.md` | Technologies, frameworks, and libraries |
+| `conventions.md` | Naming conventions and patterns |
+| `context.md` | General project context and background |
+| `notes.md` | Miscellaneous project notes |
+
+<Note>
+  Memory file names are not enforced. Claude Code may create files with any name based on the context being saved.
+</Note>
+
+## Privacy Considerations
+
+<Warning>
+  Memory files may contain:
+  - Internal architecture details
+  - Company-specific conventions
+  - Project context that shouldn't be shared publicly
+  
+  Review memory content before sharing export files.
+</Warning>
+
+## Relationship to Session Context
+
+Memory files are **persistent context** that Claude maintains across sessions, while session messages (in `~/.claude/projects/<id>/<session>.jsonl`) are **ephemeral conversation history**.
+
+- **Memory**: Long-term, curated context that carries across all sessions
+- **Session messages**: Short-term, full conversation logs for a specific session
+
+## Related Data Sources
+
+- [session-meta](/reference/data-sources/session-meta) - Per-session activity metadata
+- [history](/reference/data-sources/history) - Prompt history log
+- [stats-cache](/reference/data-sources/stats-cache) - Aggregated statistics
+
+## Full Export Structure
+
+When exported via `scripts/export.mjs`, memories appear in the JSON bundle:
+
+```json
+{
+  "stats": { },
+  "sessions": [ ],
+  "history": [ ],
+  "memories": [
+    {
+      "project": "01J9XQZ123ABC",
+      "files": [
+        {
+          "name": "architecture.md",
+          "content": "# Architecture Overview\n\nThis is a Next.js app..."
+        },
+        {
+          "name": "preferences.md",
+          "content": "# Code Preferences\n\n- Use TypeScript strict mode..."
+        }
+      ]
+    }
+  ],
+  "account": { },
+  "exportedAt": "2026-03-04T15:30:00.000Z"
+}
+```

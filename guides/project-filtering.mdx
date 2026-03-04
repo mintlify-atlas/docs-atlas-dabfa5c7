@@ -1,0 +1,338 @@
+---
+title: Project Filtering
+description: Filter your sessions, tools, and prompts by project to focus on specific codebases
+---
+
+## Overview
+
+Claude Analytics supports filtering all your data by project. This allows you to analyze your coding patterns, tool usage, and prompts for specific codebases.
+
+## How Project Filtering Works
+
+Project filtering is implemented in `src/components/dashboard.tsx` and filters three main data types:
+
+1. **Sessions** — All session metadata including duration, messages, and tool counts
+2. **History** — Prompt history entries
+3. **Tools** — Tool usage statistics derived from filtered sessions
+
+<Note>
+Stats overview, activity heatmap, hour chart, and model breakdown remain unfiltered because they use pre-aggregated data from `stats-cache.json` that cannot be split by project.
+</Note>
+
+## Using the Project Filter
+
+The project filter appears in the top-right corner of the dashboard as a dropdown menu.
+
+### Filter Location
+
+From `src/components/dashboard.tsx:102-117`:
+
+```tsx
+{projects.length > 0 && (
+  <Select value={selectedProject} onValueChange={setSelectedProject}>
+    <SelectTrigger className="w-[200px]">
+      <SelectValue placeholder="All Projects" />
+    </SelectTrigger>
+    <SelectContent>
+      <SelectItem value="all">All Projects</SelectItem>
+      {projects.map((p) => (
+        <SelectItem key={p.value} value={p.value}>
+          {p.label}
+        </SelectItem>
+      ))}
+    </SelectContent>
+  </Select>
+)}
+```
+
+### Available Options
+
+- **All Projects** — Shows data across all your coding sessions
+- **Individual Projects** — One option per unique `project_path` from your sessions
+
+## Project Extraction Logic
+
+Projects are extracted from session metadata in `src/components/dashboard.tsx:45-56`:
+
+```typescript
+const projects = useMemo(() => {
+  const map = new Map<string, string>();
+  for (const s of data.sessions) {
+    if (s.project_path && !map.has(s.project_path)) {
+      const segments = s.project_path.replace(/\/$/, "").split("/");
+      map.set(s.project_path, segments[segments.length - 1] || s.project_path);
+    }
+  }
+  return Array.from(map.entries())
+    .sort((a, b) => a[1].localeCompare(b[1]))
+    .map(([value, label]) => ({ value, label }));
+}, [data.sessions]);
+```
+
+### How Project Names are Displayed
+
+1. Takes the full `project_path` (e.g., `/Users/ishan/projects/my-app`)
+2. Removes trailing slashes
+3. Splits by `/` separator
+4. Extracts the last segment (`my-app`)
+5. Falls back to full path if no segments exist
+6. Sorts alphabetically by display name
+
+<Info>
+Project names are extracted from the directory path, so `/Users/ishan/projects/my-app` and `/home/john/my-app` will both show as "my-app".
+</Info>
+
+## What Gets Filtered
+
+### Sessions Table
+
+Filtered sessions are computed in `src/components/dashboard.tsx:58-64`:
+
+```typescript
+const filteredSessions = useMemo(
+  () =>
+    selectedProject === "all"
+      ? data.sessions
+      : data.sessions.filter((s) => s.project_path === selectedProject),
+  [data.sessions, selectedProject]
+);
+```
+
+The filtered sessions array is passed to `<SessionTable sessions={filteredSessions} />` (line 165).
+
+**What's included:**
+- Session duration and timestamps
+- Message counts (user + assistant)
+- Token usage (input + output)
+- Tool call counts
+- Git commits and pushes
+- Code changes (lines added/removed, files modified)
+- First prompt text
+
+### Prompt History
+
+Prompt history filtering in `src/components/dashboard.tsx:66-72`:
+
+```typescript
+const filteredHistory = useMemo(
+  () =>
+    selectedProject === "all"
+      ? data.history
+      : data.history.filter((h) => h.project === selectedProject),
+  [data.history, selectedProject]
+);
+```
+
+The filtered history array is passed to `<PromptHistory history={filteredHistory} />` (line 178).
+
+**What's included:**
+- Prompt display text
+- Timestamps
+- Pasted contents
+- Associated project
+
+### Tool Usage
+
+Tool usage is computed from filtered sessions in `<ToolUsageChart sessions={filteredSessions} />` (line 174).
+
+The component aggregates tool counts from the `tool_counts` field of each session:
+
+```typescript
+// Each SessionMeta has:
+tool_counts: Record<string, number>  // e.g. {"Read": 42, "Edit": 15, "Bash": 8}
+```
+
+**Tools tracked:**
+- Read
+- Edit
+- Write
+- Bash
+- Glob
+- Grep
+- Task
+- WebFetch
+- And any other tools used during sessions
+
+## What's NOT Filtered
+
+These components use pre-aggregated data from `stats-cache.json` that cannot be broken down by project:
+
+### Stats Overview Cards
+
+```tsx
+<StatsOverview stats={data.stats} sessions={data.sessions} onNavigate={setActiveTab} />
+```
+
+Shows totals across **all projects**:
+- Total sessions
+- Total messages  
+- Total tool calls
+- Lines added/removed
+- Files modified
+- Average session duration
+- Total cost (USD)
+
+<Warning>
+The stats overview cards always show totals across all projects, even when a project filter is active.
+</Warning>
+
+### Activity Heatmap
+
+```tsx
+<ActivityHeatmap stats={data.stats} />
+```
+
+Uses `stats.dailyActivity` which aggregates activity across all projects.
+
+### Hour Chart
+
+```tsx
+<HourChart stats={data.stats} />
+```
+
+Uses `stats.hourCounts` which tracks session distribution by hour across all projects.
+
+### Model Breakdown
+
+```tsx
+<ModelBreakdown stats={data.stats} />
+```
+
+Uses `stats.modelUsage` which aggregates token usage and costs across all projects.
+
+### Daily Tokens Chart
+
+```tsx
+<DailyTokensChart stats={data.stats} />
+```
+
+Uses `stats.dailyModelTokens` which tracks daily token consumption across all projects.
+
+## Filter State Management
+
+Project filter state is managed in `src/components/dashboard.tsx:43`:
+
+```typescript
+const [selectedProject, setSelectedProject] = useState("all");
+```
+
+- Default value: `"all"`
+- Persists during the session (not saved to localStorage)
+- Resets to "all" when you refresh the page or switch profiles
+
+## Performance Considerations
+
+### Memoization
+
+All filtering uses React's `useMemo` hook to prevent unnecessary recalculations:
+
+```typescript
+const filteredSessions = useMemo(
+  () => /* filtering logic */,
+  [data.sessions, selectedProject]
+);
+```
+
+Filtering only recalculates when:
+1. The `data.sessions` array changes (new data loaded)
+2. The `selectedProject` value changes (user selects different project)
+
+### Filtering Complexity
+
+- **Sessions:** O(n) where n = number of sessions
+- **History:** O(n) where n = number of history entries
+- **Projects extraction:** O(n) where n = number of sessions
+
+All filtering operations are fast even with thousands of sessions.
+
+## Tab Navigation with Filtering
+
+The dashboard has 5 tabs (src/components/dashboard.tsx:147-154):
+
+```tsx
+<TabsList className="grid w-full grid-cols-5">
+  <TabsTrigger value="activity">Activity</TabsTrigger>
+  <TabsTrigger value="sessions">Sessions</TabsTrigger>
+  <TabsTrigger value="models">Models</TabsTrigger>
+  <TabsTrigger value="tools">Tools</TabsTrigger>
+  <TabsTrigger value="history">Prompts</TabsTrigger>
+</TabsList>
+```
+
+### Filtering by Tab
+
+| Tab | Uses Filtered Data | Shows All Projects |
+|-----|-------------------|-------------------|
+| Activity | No | Yes (heatmap, hours, projects) |
+| Sessions | Yes | No (filtered sessions table) |
+| Models | No | Yes (model breakdown, daily tokens) |
+| Tools | Yes | No (filtered tool usage chart) |
+| Prompts | Yes | No (filtered prompt history) |
+
+## Matching Logic
+
+Project matching uses strict equality on `project_path`:
+
+```typescript
+data.sessions.filter((s) => s.project_path === selectedProject)
+```
+
+- Exact string match (case-sensitive)
+- No fuzzy matching or partial matches
+- Empty or null `project_path` values won't match any project filter
+
+## Project Path Handling
+
+### From SessionMeta
+
+```typescript
+interface SessionMeta {
+  project_path: string;  // Absolute path to project directory
+  // ... other fields
+}
+```
+
+### From HistoryEntry
+
+```typescript
+interface HistoryEntry {
+  project: string;  // Project path
+  // ... other fields
+}
+```
+
+<Info>
+Note the field name difference: `project_path` in SessionMeta vs `project` in HistoryEntry. Both contain the same project path value.
+</Info>
+
+## Example Use Cases
+
+### Analyzing a Specific Project
+
+1. Select your project from the dropdown
+2. Go to **Sessions** tab to see all sessions for that project
+3. Go to **Tools** tab to see which tools you used most
+4. Go to **Prompts** tab to review your prompts for that codebase
+
+### Comparing Projects
+
+1. Select "All Projects" and note tool usage patterns
+2. Select "Project A" and check tool counts
+3. Select "Project B" and compare
+
+### Finding Project-Specific Prompts
+
+1. Select your project from the dropdown
+2. Go to **Prompts** tab
+3. Use the search bar to find specific prompts within that project
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Understanding Data" icon="database" href="/guides/understanding-data">
+    Learn about all data types and metrics
+  </Card>
+  <Card title="Privacy & Security" icon="shield" href="/guides/privacy-security">
+    Understand how your data is protected
+  </Card>
+</CardGroup>

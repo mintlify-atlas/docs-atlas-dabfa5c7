@@ -1,0 +1,326 @@
+---
+title: Multi-Profile Support
+description: Compare analytics across different Claude profiles and workspaces
+---
+
+Multi-Profile support allows you to track and compare analytics across different Claude Code installations, user profiles, or organizational accounts.
+
+## Profile System
+
+The dashboard supports multiple data sources, each representing a different profile.
+
+### Profile Interface
+
+From `src/components/dashboard.tsx:23`:
+
+```typescript
+interface Profile {
+  id: string;
+  name: string;
+  data: DashboardData;
+}
+```
+
+Each profile contains:
+- **id**: Unique identifier for the profile
+- **name**: Display name shown in the UI
+- **data**: Complete analytics data for that profile
+
+### Dashboard Props
+
+The dashboard accepts profile-related props:
+
+```typescript
+export function Dashboard({
+  data,
+  profiles,
+  activeProfileId,
+  onSwitchProfile,
+  onAddProfile,
+}: {
+  data: DashboardData;
+  profiles?: Profile[];
+  activeProfileId?: string;
+  onSwitchProfile?: (id: string) => void;
+  onAddProfile?: () => void;
+}) {
+  // ...
+}
+```
+
+## Profile Switcher
+
+A dropdown selector in the header allows switching between profiles.
+
+### Display Condition
+
+The switcher only appears when multiple profiles exist:
+
+```typescript
+const showProfileSwitcher = profiles && profiles.length > 1;
+```
+
+### Implementation
+
+From `src/components/dashboard.tsx:119`:
+
+```typescript
+{showProfileSwitcher && (
+  <Select value={activeProfileId} onValueChange={onSwitchProfile}>
+    <SelectTrigger className="w-[180px]">
+      <SelectValue placeholder="Profile" />
+    </SelectTrigger>
+    <SelectContent>
+      {profiles.map((p) => (
+        <SelectItem key={p.id} value={p.id}>
+          {p.name}
+        </SelectItem>
+      ))}
+    </SelectContent>
+  </Select>
+)}
+```
+
+Features:
+- 180px width for adequate label space
+- Dropdown with all available profiles
+- Controlled component (value managed by parent)
+- Calls `onSwitchProfile` callback on selection
+
+## Add Profile Button
+
+A button allows adding new profiles to track.
+
+### Display Condition
+
+The button appears when:
+1. `onAddProfile` callback is provided
+2. At least one profile exists
+
+```typescript
+{onAddProfile && profiles && profiles.length > 0 && (
+  <button
+    onClick={onAddProfile}
+    className="rounded-lg bg-[#1a1a1a] border border-white/10 px-3 py-2 text-xs text-gray-400 hover:text-white hover:bg-[#2a2a2a] transition-colors"
+  >
+    + Profile
+  </button>
+)}
+```
+
+Styling:
+- Dark background with subtle border
+- Small text (xs)
+- Hover effects for better UX
+- Plus icon prefix
+
+## Dashboard Data Structure
+
+Each profile contains a complete `DashboardData` object (`src/lib/types.ts:95`):
+
+```typescript
+export interface DashboardData {
+  stats: StatsCache | null;
+  sessions: SessionMeta[];
+  history: HistoryEntry[];
+  memories: ProjectMemory[];
+  account?: AccountInfo;
+  exportedAt?: string;
+}
+```
+
+This includes:
+- **stats**: Aggregated statistics and charts data
+- **sessions**: All session metadata
+- **history**: Complete prompt history
+- **memories**: Project-specific memory files
+- **account**: User/organization identifiers
+- **exportedAt**: Timestamp of data export
+
+## Use Cases
+
+### Personal vs. Work
+
+Track separate profiles for:
+- Personal coding projects
+- Work/enterprise account
+- Side projects or consulting work
+
+Compare:
+- Which environment you're more active in
+- Different tool usage patterns
+- Model preferences across contexts
+
+### Team Comparison
+
+If you have access to exported data from teammates:
+- Load multiple team member profiles
+- Compare coding patterns
+- Identify best practices
+- Understand tool adoption
+
+### Before/After Analysis
+
+Create profiles for:
+- Different time periods
+- Before and after learning new tools
+- A/B testing prompt strategies
+
+### Multi-Organization
+
+For consultants or multi-org developers:
+- Track activity per client
+- Compare project complexity
+- Analyze time distribution
+
+## Profile Management
+
+Profile management is handled by the parent component (not shown in source files).
+
+### Switching Profiles
+
+When `onSwitchProfile` is called:
+1. Parent updates `activeProfileId`
+2. Parent passes new `data` prop
+3. Dashboard re-renders with new profile's data
+4. All components update automatically
+
+### Adding Profiles
+
+The `onAddProfile` callback typically:
+1. Opens a file picker or input dialog
+2. Loads data from selected source
+3. Adds to profiles array
+4. Switches to new profile
+
+## Header Layout
+
+The profile switcher appears alongside other controls:
+
+```typescript
+<div className="flex items-center gap-3">
+  {projects.length > 0 && (
+    <Select value={selectedProject} onValueChange={setSelectedProject}>
+      {/* Project selector */}
+    </Select>
+  )}
+
+  {showProfileSwitcher && (
+    <Select value={activeProfileId} onValueChange={onSwitchProfile}>
+      {/* Profile selector */}
+    </Select>
+  )}
+
+  {onAddProfile && profiles && profiles.length > 0 && (
+    <button onClick={onAddProfile}>
+      {/* Add profile button */}
+    </button>
+  )}
+</div>
+```
+
+Layout features:
+- Horizontal flex layout
+- 12px gap between elements
+- Right-aligned in header
+- Responsive on mobile
+
+## Account Information
+
+Profiles can include account metadata for identification.
+
+### Account Info Structure
+
+From `src/lib/types.ts:84`:
+
+```typescript
+export interface AccountInfo {
+  accountUUID?: string;
+  organizationUUID?: string;
+  appVersion?: string;
+}
+```
+
+This helps:
+- Distinguish between different accounts
+- Track which app version generated data
+- Organize profiles by organization
+
+<Note>
+  Account information is optional. Profiles can work without it, using just the profile name for identification.
+</Note>
+
+## Project Filtering Across Profiles
+
+Project filtering works independently within each profile:
+
+```typescript
+const projects = useMemo(() => {
+  const map = new Map<string, string>();
+  for (const s of data.sessions) {
+    if (s.project_path && !map.has(s.project_path)) {
+      const segments = s.project_path.replace(/\/$/, "").split("/");
+      map.set(s.project_path, segments[segments.length - 1] || s.project_path);
+    }
+  }
+  return Array.from(map.entries())
+    .sort((a, b) => a[1].localeCompare(b[1]))
+    .map(([value, label]) => ({ value, label }));
+}, [data.sessions]);
+```
+
+When you switch profiles:
+- Project list updates to reflect new profile's projects
+- Selected project resets to "All Projects"
+- Filtered data reflects new profile + project combination
+
+## Export and Import
+
+While not implemented in the visible components, the data structure supports:
+
+### Exporting
+
+```typescript
+export interface DashboardData {
+  // ... data fields
+  exportedAt?: string;
+}
+```
+
+The `exportedAt` timestamp indicates when data was exported, useful for:
+- Version control
+- Data freshness validation
+- Historical analysis
+
+### Data Portability
+
+The structured `DashboardData` format enables:
+- Saving snapshots of analytics
+- Sharing anonymized data
+- Backup and archival
+- Cross-machine comparison
+
+## Performance Considerations
+
+Multiple profiles are handled efficiently:
+
+### Lazy Loading
+
+Only the active profile's data is rendered:
+- Other profiles remain in memory but not in DOM
+- Switching is instant (no re-fetch needed)
+- Component state is preserved per profile
+
+### Memory Management
+
+For large numbers of profiles:
+- Consider loading profiles on-demand
+- Cache only recently accessed profiles
+- Provide profile unload functionality
+
+## Related Features
+
+- [Overview](/features/overview) - All features work per-profile
+- [Session Explorer](/features/session-explorer) - Compare session patterns across profiles
+- [Activity Tracking](/features/activity-tracking) - See activity differences between profiles
+- [Cost Tracking](/features/cost-tracking) - Compare costs across different accounts

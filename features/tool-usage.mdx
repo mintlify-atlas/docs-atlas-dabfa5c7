@@ -1,0 +1,306 @@
+---
+title: Tool Usage
+description: Analyze which tools and programming languages Claude uses most
+---
+
+The Tool Usage feature provides insights into how Claude interacts with your codebase through tool calls and which programming languages appear in your sessions.
+
+## Tool Usage Chart
+
+A horizontal bar chart displays the most frequently used tools across all sessions.
+
+### Implementation
+
+From `src/components/tool-usage-chart.tsx:14`:
+
+```typescript
+export function ToolUsageChart({ sessions }: { sessions: SessionMeta[] }) {
+  const toolMap = new Map<string, number>();
+
+  for (const s of sessions) {
+    for (const [tool, count] of Object.entries(s.tool_counts)) {
+      toolMap.set(tool, (toolMap.get(tool) ?? 0) + count);
+    }
+  }
+
+  const data = Array.from(toolMap.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 15);
+}
+```
+
+### Display Features
+
+- Shows **top 15 tools** by usage count
+- Sorted in descending order (most used first)
+- Horizontal bar layout for better label readability
+- Light gray bars (`#e5e7eb`)
+- Y-axis width of 100px to accommodate tool names
+
+### Common Tools
+
+Typical tools that appear in the chart:
+
+- **read**: Reading file contents
+- **edit**: Editing existing files
+- **write**: Creating new files
+- **bash**: Executing shell commands
+- **grep**: Searching file contents
+- **glob**: Finding files by pattern
+- **skill**: Loading specialized skills
+- **WebFetch**: Fetching web content
+- **Task**: Launching specialized agents
+
+## Languages Used Chart
+
+Shows which programming languages appear in your coding sessions.
+
+### Implementation
+
+From `src/components/tool-usage-chart.tsx:28`:
+
+```typescript
+const langMap = new Map<string, number>();
+for (const s of sessions) {
+  for (const [lang, count] of Object.entries(s.languages)) {
+    langMap.set(lang, (langMap.get(lang) ?? 0) + count);
+  }
+}
+
+const langData = Array.from(langMap.entries())
+  .map(([name, count]) => ({ name, count }))
+  .sort((a, b) => b.count - a.count)
+  .slice(0, 10);
+```
+
+### Display Features
+
+- Shows **top 10 languages** by file count
+- Horizontal bar layout
+- Lighter gray bars (`#d1d5db`) to distinguish from tool chart
+- Sorted by usage frequency
+
+### Language Detection
+
+Languages are detected from:
+- File extensions in tool calls
+- Files modified during sessions
+- Code blocks in conversations
+
+## Session-Level Tool Data
+
+Tool usage is tracked per session in the `SessionMeta` interface (`src/lib/types.ts:1`):
+
+```typescript
+export interface SessionMeta {
+  tool_counts: Record<string, number>;
+  languages: Record<string, number>;
+  // ... other fields
+}
+```
+
+### Tool Counts Structure
+
+```typescript
+tool_counts: {
+  "read": 45,
+  "edit": 12,
+  "bash": 8,
+  "grep": 3
+}
+```
+
+Each key is a tool name, and the value is the number of times that tool was invoked in the session.
+
+### Languages Structure
+
+```typescript
+languages: {
+  "typescript": 15,
+  "python": 3,
+  "json": 2
+}
+```
+
+Each key is a language identifier, and the value represents the number of files of that language type.
+
+## Tool Usage in Session Explorer
+
+Individual tool calls are visible in expanded session views.
+
+### Message-Level Tool Display
+
+From `src/components/session-table.tsx:242`:
+
+```typescript
+{message.toolUse && message.toolUse.length > 0 && (
+  <div className="mt-1 flex flex-wrap gap-1">
+    {message.toolUse.map((tool) => (
+      <span
+        key={tool.id}
+        className="inline-flex items-center gap-1 rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-gray-500"
+      >
+        <Wrench className="h-2.5 w-2.5" />
+        {tool.name}
+      </span>
+    ))}
+  </div>
+)}
+```
+
+Each tool invocation appears as a small badge below the assistant's message, showing:
+- Wrench icon
+- Tool name
+- Unique styling for each tool instance
+
+## Session Badge Indicators
+
+Sessions display language badges in the session list.
+
+### Language Badges
+
+From `src/components/session-table.tsx:134`:
+
+```typescript
+{Object.entries(s.languages).map(([lang, count]) => (
+  <Badge key={lang} variant="outline">
+    {lang}: {count}
+  </Badge>
+))}
+```
+
+These badges show:
+- Language name
+- Number of files in that language
+- Outline styling to distinguish from other badge types
+
+## Layout and Organization
+
+The tool usage charts are displayed side-by-side in a responsive grid:
+
+```typescript
+<div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+  <Card>
+    <CardHeader>
+      <CardTitle>Tool Usage (all sessions)</CardTitle>
+    </CardHeader>
+    <CardContent>
+      {/* Tool chart */}
+    </CardContent>
+  </Card>
+
+  <Card>
+    <CardHeader>
+      <CardTitle>Languages Used</CardTitle>
+    </CardHeader>
+    <CardContent>
+      {/* Language chart */}
+    </CardContent>
+  </Card>
+</div>
+```
+
+On mobile devices, charts stack vertically. On large screens (lg breakpoint), they appear side-by-side.
+
+## Accessing Tool Analytics
+
+Tool usage data is available in the "Tools" tab:
+
+```typescript
+<TabsContent value="tools" className="mt-6">
+  <ToolUsageChart sessions={filteredSessions} />
+</TabsContent>
+```
+
+### Project Filtering
+
+When filtering by project, tool usage reflects only the selected project:
+
+```typescript
+const filteredSessions = useMemo(
+  () =>
+    selectedProject === "all"
+      ? data.sessions
+      : data.sessions.filter((s) => s.project_path === selectedProject),
+  [data.sessions, selectedProject]
+);
+```
+
+## Tooltip Information
+
+Hovering over bars in either chart displays:
+- Tool or language name
+- Exact usage count
+- Dark-themed tooltip for consistency
+
+```typescript
+<Tooltip
+  cursor={false}
+  contentStyle={{
+    backgroundColor: "#141414",
+    border: "1px solid #2a2a2a",
+    borderRadius: "8px",
+    color: "#e5e7eb",
+  }}
+/>
+```
+
+## Stats Overview Integration
+
+The stats overview shows total tool calls:
+
+```typescript
+const totalToolCalls = sessions.reduce(
+  (a, s) => a + Object.values(s.tool_counts).reduce((b, c) => b + c, 0),
+  0
+);
+```
+
+Displayed as:
+
+```typescript
+{
+  title: "Tool Calls",
+  value: totalToolCalls.toLocaleString(),
+  sub: `across all sessions`,
+  icon: Zap,
+  tab: "tools",
+}
+```
+
+Clicking this card navigates to the Tools tab.
+
+## Tool Error Tracking
+
+Sessions also track tool errors, visible in session badges:
+
+```typescript
+{s.tool_errors > 0 && (
+  <Badge variant="destructive">
+    {s.tool_errors} error{s.tool_errors > 1 ? "s" : ""}
+  </Badge>
+)}
+```
+
+### Error Categories
+
+The `SessionMeta` interface includes detailed error tracking:
+
+```typescript
+export interface SessionMeta {
+  tool_errors: number;
+  tool_error_categories: Record<string, number>;
+  // ... other fields
+}
+```
+
+<Note>
+  Tool errors can indicate issues like file not found, permission denied, or command failures. They're useful for identifying problematic sessions.
+</Note>
+
+## Related Features
+
+- [Session Explorer](/features/session-explorer) - View tool usage per session
+- [Activity Tracking](/features/activity-tracking) - Correlate tool usage with activity patterns
+- [Prompt History](/features/prompt-history) - See prompts that led to tool usage

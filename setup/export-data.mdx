@@ -1,0 +1,561 @@
+---
+title: 'Export Script Deep Dive'
+description: 'Understand how the export script collects and packages your Claude Code data'
+icon: 'file-export'
+---
+
+The export script (`scripts/export.mjs`) is a standalone Node.js program that reads your local `~/.claude/` directory and generates a single JSON file containing all your usage data.
+
+<Info>
+The script uses **only** Node.js built-in modules (`fs`, `path`, `os`). No external dependencies required.
+</Info>
+
+## Usage
+
+```bash
+node scripts/export.mjs
+```
+
+Output file: `claude-analytics-export.json` (in current directory)
+
+## What Gets Collected
+
+The script collects five types of data:
+
+### 1. Stats Cache
+
+**Source**: `~/.claude/stats-cache.json`
+
+**Contains**:
+- Total sessions and messages
+- Daily activity (messages, sessions, tool calls per day)
+- Model usage (tokens, cache hits, costs per model)
+- Hourly activity distribution
+- Longest session metadata
+
+**Code**:
+
+```javascript
+// From: scripts/export.mjs (lines 12-19)
+let stats = null;
+try {
+  stats = JSON.parse(fs.readFileSync(path.join(CLAUDE_DIR, "stats-cache.json"), "utf-8"));
+  console.log("  stats-cache.json ✓");
+} catch {
+  console.log("  stats-cache.json ✗ (not found)");
+}
+```
+
+<Note>
+If the stats cache doesn't exist, the script continues gracefully with `stats = null`.
+</Note>
+
+### 2. Session Metadata
+
+**Source**: `~/.claude/usage-data/session-meta/*.json`
+
+**Contains** (per session):
+- Session ID and project path
+- Start time and duration
+- Message counts (user + assistant)
+- Tool usage counts by type
+- Programming languages used
+- Git activity (commits, pushes)
+- Token counts (input, output)
+- Code changes (lines added/removed, files modified)
+
+**Code**:
+
+```javascript
+// From: scripts/export.mjs (lines 21-37)
+let sessions = [];
+const metaDir = path.join(CLAUDE_DIR, "usage-data", "session-meta");
+try {
+  const files = fs.readdirSync(metaDir).filter((f) => f.endsWith(".json"));
+  for (const f of files) {
+    try {
+      const raw = fs.readFileSync(path.join(metaDir, f), "utf-8");
+      const meta = JSON.parse(raw);
+      if (meta.duration_minutes > 0) sessions.push(meta);
+    } catch { /* skip */ }
+  }
+  sessions.sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
+  console.log(`  session-meta/ ✓ (${sessions.length} sessions)`);
+} catch {
+  console.log("  session-meta/ ✗ (not found)");
+}
+```
+
+<Warning>
+Sessions with `duration_minutes = 0` are filtered out as they represent aborted or invalid sessions.
+</Warning>
+
+### 3. Prompt History
+
+**Source**: `~/.claude/history.jsonl`
+
+**Format**: JSONL (one JSON object per line)
+
+**Contains** (per entry):
+- `display`: The prompt text
+- `timestamp`: Unix timestamp (milliseconds)
+- `project`: Project identifier
+- `pastedContents`: Attached file/context metadata
+
+**Code**:
+
+```javascript
+// From: scripts/export.mjs (lines 39-49)
+let history = [];
+try {
+  const raw = fs.readFileSync(path.join(CLAUDE_DIR, "history.jsonl"), "utf-8");
+  history = raw.trim().split("\n").map((line) => {
+    try { return JSON.parse(line); } catch { return null; }
+  }).filter(Boolean);
+  console.log(`  history.jsonl ✓ (${history.length} entries)`);
+} catch {
+  console.log("  history.jsonl ✗ (not found)");
+}
+```
+
+<Info>
+Invalid lines are skipped rather than causing the entire export to fail.
+</Info>
+
+### 4. Account Information
+
+**Source**: `~/.claude/statsig/*cached.evaluations*.json`
+
+**Contains**:
+- Account UUID
+- Organization UUID (if applicable)
+
+**Purpose**: Enables multi-profile support in hosted mode
+
+**Code**:
+
+```javascript
+// From: scripts/export.mjs (lines 51-71)
+let account = {};
+try {
+  const statsigDir = path.join(CLAUDE_DIR, "statsig");
+  const files = fs.readdirSync(statsigDir).filter((f) => f.includes("cached.evaluations"));
+  for (const f of files) {
+    try {
+      const raw = fs.readFileSync(path.join(statsigDir, f), "utf-8");
+      const parsed = JSON.parse(raw);
+      if (parsed.user?.userID) account.accountUUID = parsed.user.userID;
+      if (parsed.user?.custom?.organization_uuid) account.organizationUUID = parsed.user.custom.organization_uuid;
+    } catch { /* skip */ }
+  }
+  if (account.accountUUID) {
+    console.log(`  account info ✓ (${account.accountUUID.slice(0, 8)}...)`);
+  } else {
+    console.log("  account info ✗ (not found in statsig cache)");
+  }
+} catch {
+  console.log("  account info ✗ (statsig dir not found)");
+}
+```
+
+<Note>
+Account info is **optional**. The export succeeds even if this data is missing.
+</Note>
+
+### 5. Project Memories
+
+**Source**: `~/.claude/projects/*/memory/*.md`
+
+**Contains**: Markdown files that Claude Code uses to remember project context
+
+**Code**:
+
+```javascript
+// From: scripts/export.mjs (lines 73-99)
+let memories = [];
+try {
+  const projectsDir = path.join(CLAUDE_DIR, "projects");
+  const projects = fs.readdirSync(projectsDir);
+  for (const p of projects) {
+    const memDir = path.join(projectsDir, p, "memory");
+    try {
+      const mdFiles = fs.readdirSync(memDir).filter((f) => f.endsWith(".md"));
+      if (mdFiles.length > 0) {
+        const files = mdFiles.map((f) => ({
+          name: f,
+          content: fs.readFileSync(path.join(memDir, f), "utf-8").slice(0, 5000),
+        }));
+        memories.push({ project: p, files });
+      }
+    } catch { /* no memory dir */ }
+  }
+  if (memories.length > 0) {
+    const totalFiles = memories.reduce((a, m) => a + m.files.length, 0);
+    console.log(`  memories ✓ (${totalFiles} files across ${memories.length} projects)`);
+  } else {
+    console.log("  memories ✗ (none found)");
+  }
+} catch {
+  console.log("  memories ✗ (projects dir not found)");
+}
+```
+
+<Warning>
+Each memory file is **truncated to 5,000 characters** to prevent massive exports. If you need full content, use local mode instead.
+</Warning>
+
+## Output Format
+
+The script generates a single JSON file with this structure:
+
+```typescript
+interface ExportData {
+  stats: StatsCache | null;
+  sessions: SessionMeta[];
+  history: HistoryEntry[];
+  memories: ProjectMemory[];
+  account?: {
+    accountUUID?: string;
+    organizationUUID?: string;
+  };
+  exportedAt: string;  // ISO 8601 timestamp
+}
+```
+
+### Writing the Output
+
+```javascript
+// From: scripts/export.mjs (lines 101-114)
+const data = {
+  stats,
+  sessions,
+  history,
+  memories,
+  account: Object.keys(account).length > 0 ? account : undefined,
+  exportedAt: new Date().toISOString(),
+};
+fs.writeFileSync(OUTPUT, JSON.stringify(data));
+
+const sizeMB = (fs.statSync(OUTPUT).size / 1024 / 1024).toFixed(1);
+console.log(`\nExported to: ${OUTPUT} (${sizeMB} MB)`);
+console.log("Upload this file at: https://claude-analytics.vercel.app");
+```
+
+## Example Output
+
+```
+Claude Code Analytics — Data Export
+
+  stats-cache.json ✓
+  session-meta/ ✓ (127 sessions)
+  history.jsonl ✓ (1,543 entries)
+  account info ✓ (a1b2c3d4...)
+  memories ✓ (23 files across 5 projects)
+
+Exported to: /Users/you/claude-analytics-export.json (2.4 MB)
+Upload this file at: https://claude-analytics.vercel.app
+```
+
+## File Size Breakdown
+
+Typical export sizes:
+
+| Component | Lines/Files | Size |
+|-----------|-------------|------|
+| Stats cache | 1 file | ~50 KB |
+| Session metadata | 100 sessions | ~200 KB |
+| Prompt history | 1,000 entries | ~500 KB |
+| Project memories | 20 files | ~100 KB |
+| **Total** | | **~850 KB** |
+
+<Info>
+Exports scale linearly with usage. Heavy users (5,000+ prompts) may see 5-10 MB files.
+</Info>
+
+## Customizing the Export
+
+### Filter by Date Range
+
+Only export sessions from the last 30 days:
+
+```javascript
+// After loading sessions (line 37)
+const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+sessions = sessions.filter(s => new Date(s.start_time).getTime() > thirtyDaysAgo);
+```
+
+### Exclude Prompt History
+
+Comment out lines 39-49:
+
+```javascript
+// let history = [];
+// try { ... } catch { ... }
+history = [];  // Export empty array instead
+```
+
+### Include Full Memory Files
+
+Remove the `.slice(0, 5000)` truncation (line 85):
+
+```javascript
+content: fs.readFileSync(path.join(memDir, f), "utf-8"),  // Full content
+```
+
+<Warning>
+Removing truncation can result in **very large** export files (> 50 MB) if you have extensive project memories.
+</Warning>
+
+### Add Custom Metadata
+
+Extend the output object (line 102):
+
+```javascript
+const data = {
+  stats,
+  sessions,
+  history,
+  memories,
+  account: Object.keys(account).length > 0 ? account : undefined,
+  exportedAt: new Date().toISOString(),
+  // Custom fields:
+  exportVersion: "2.0",
+  machineName: os.hostname(),
+  nodeVersion: process.version,
+};
+```
+
+## Data Privacy
+
+The export script:
+
+- ✓ Runs entirely locally (no network requests)
+- ✓ Only reads from `~/.claude/` (no other directories)
+- ✓ Uses built-in Node.js modules (no third-party dependencies)
+- ✓ Writes to current directory (no system-wide changes)
+- ✓ Is fully open source and auditable
+
+<Tip>
+Review the script yourself: It's only 115 lines of readable JavaScript with zero dependencies.
+</Tip>
+
+## Dependencies
+
+**Zero external dependencies.** The script only imports Node.js built-ins:
+
+```javascript
+import fs from "fs";
+import path from "path";
+import { homedir } from "os";
+```
+
+From `package.json`:
+
+```json
+{
+  "scripts": {
+    "export-data": "node scripts/export.mjs"
+  }
+}
+```
+
+You can run it with:
+- `node scripts/export.mjs` (Node.js 18+)
+- `bun scripts/export.mjs` (Bun)
+- `deno run --allow-read --allow-write scripts/export.mjs` (Deno)
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Error: Cannot find module 'fs'">
+    You're using an outdated Node version. Update to Node.js 18+:
+    
+    ```bash
+    node --version
+    # If < 18, update via: https://nodejs.org
+    ```
+  </Accordion>
+  
+  <Accordion title="All data sources show ✗ (not found)">
+    Your `~/.claude/` directory doesn't exist or is empty. Verify:
+    
+    ```bash
+    ls -la ~/.claude/
+    ```
+    
+    If empty, use Claude Code at least once to generate data.
+  </Accordion>
+  
+  <Accordion title="Export file is only 2 bytes">
+    The script ran but found no data. Check the console output to see which sources failed.
+    
+    Minimal valid export:
+    ```json
+    {"stats":null,"sessions":[],"history":[],"memories":[]}
+    ```
+  </Accordion>
+  
+  <Accordion title="Permission denied writing output file">
+    Ensure you have write access to the current directory:
+    
+    ```bash
+    pwd
+    ls -la .
+    ```
+    
+    Or specify a different output location:
+    
+    ```javascript
+    // Edit line 8 in export.mjs:
+    const OUTPUT = "/tmp/claude-export.json";
+    ```
+  </Accordion>
+  
+  <Accordion title="Script hangs or takes a very long time">
+    You may have an extremely large `history.jsonl` file. Check its size:
+    
+    ```bash
+    ls -lh ~/.claude/history.jsonl
+    ```
+    
+    If > 50 MB, consider filtering to recent entries only (see customization above).
+  </Accordion>
+</AccordionGroup>
+
+## Complete Script Source
+
+Here's the full export script for reference:
+
+```javascript
+#!/usr/bin/env node
+
+import fs from "fs";
+import path from "path";
+import { homedir } from "os";
+
+const CLAUDE_DIR = path.join(homedir(), ".claude");
+const OUTPUT = path.join(process.cwd(), "claude-analytics-export.json");
+
+console.log("Claude Code Analytics — Data Export\n");
+
+// 1. Stats cache
+let stats = null;
+try {
+  stats = JSON.parse(fs.readFileSync(path.join(CLAUDE_DIR, "stats-cache.json"), "utf-8"));
+  console.log("  stats-cache.json ✓");
+} catch {
+  console.log("  stats-cache.json ✗ (not found)");
+}
+
+// 2. Session metas
+let sessions = [];
+const metaDir = path.join(CLAUDE_DIR, "usage-data", "session-meta");
+try {
+  const files = fs.readdirSync(metaDir).filter((f) => f.endsWith(".json"));
+  for (const f of files) {
+    try {
+      const raw = fs.readFileSync(path.join(metaDir, f), "utf-8");
+      const meta = JSON.parse(raw);
+      if (meta.duration_minutes > 0) sessions.push(meta);
+    } catch { /* skip */ }
+  }
+  sessions.sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
+  console.log(`  session-meta/ ✓ (${sessions.length} sessions)`);
+} catch {
+  console.log("  session-meta/ ✗ (not found)");
+}
+
+// 3. History
+let history = [];
+try {
+  const raw = fs.readFileSync(path.join(CLAUDE_DIR, "history.jsonl"), "utf-0");
+  history = raw.trim().split("\n").map((line) => {
+    try { return JSON.parse(line); } catch { return null; }
+  }).filter(Boolean);
+  console.log(`  history.jsonl ✓ (${history.length} entries)`);
+} catch {
+  console.log("  history.jsonl ✗ (not found)");
+}
+
+// 4. Account info
+let account = {};
+try {
+  const statsigDir = path.join(CLAUDE_DIR, "statsig");
+  const files = fs.readdirSync(statsigDir).filter((f) => f.includes("cached.evaluations"));
+  for (const f of files) {
+    try {
+      const raw = fs.readFileSync(path.join(statsigDir, f), "utf-8");
+      const parsed = JSON.parse(raw);
+      if (parsed.user?.userID) account.accountUUID = parsed.user.userID;
+      if (parsed.user?.custom?.organization_uuid) account.organizationUUID = parsed.user.custom.organization_uuid;
+    } catch { /* skip */ }
+  }
+  if (account.accountUUID) {
+    console.log(`  account info ✓ (${account.accountUUID.slice(0, 8)}...)`);
+  } else {
+    console.log("  account info ✗ (not found in statsig cache)");
+  }
+} catch {
+  console.log("  account info ✗ (statsig dir not found)");
+}
+
+// 5. Project memories (with file content)
+let memories = [];
+try {
+  const projectsDir = path.join(CLAUDE_DIR, "projects");
+  const projects = fs.readdirSync(projectsDir);
+  for (const p of projects) {
+    const memDir = path.join(projectsDir, p, "memory");
+    try {
+      const mdFiles = fs.readdirSync(memDir).filter((f) => f.endsWith(".md"));
+      if (mdFiles.length > 0) {
+        const files = mdFiles.map((f) => ({
+          name: f,
+          content: fs.readFileSync(path.join(memDir, f), "utf-8").slice(0, 5000),
+        }));
+        memories.push({ project: p, files });
+      }
+    } catch { /* no memory dir */ }
+  }
+  if (memories.length > 0) {
+    const totalFiles = memories.reduce((a, m) => a + m.files.length, 0);
+    console.log(`  memories ✓ (${totalFiles} files across ${memories.length} projects)`);
+  } else {
+    console.log("  memories ✗ (none found)");
+  }
+} catch {
+  console.log("  memories ✗ (projects dir not found)");
+}
+
+// Write output
+const data = {
+  stats,
+  sessions,
+  history,
+  memories,
+  account: Object.keys(account).length > 0 ? account : undefined,
+  exportedAt: new Date().toISOString(),
+};
+fs.writeFileSync(OUTPUT, JSON.stringify(data));
+
+const sizeMB = (fs.statSync(OUTPUT).size / 1024 / 1024).toFixed(1);
+console.log(`\nExported to: ${OUTPUT} (${sizeMB} MB)`);
+console.log("Upload this file at: https://claude-analytics.vercel.app");
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Upload to Hosted Mode" icon="cloud-arrow-up" href="/setup/hosted-mode">
+    Learn how to upload your export to the hosted app
+  </Card>
+  <Card title="Understanding Data" icon="database" href="/guides/understanding-data">
+    Deep dive into what each data source contains
+  </Card>
+  <Card title="Data Model Reference" icon="table" href="/reference/data-model">
+    Complete TypeScript interfaces for all data types
+  </Card>
+  <Card title="Privacy & Security" icon="shield" href="/guides/privacy-security">
+    Learn about data security guarantees
+  </Card>
+</CardGroup>

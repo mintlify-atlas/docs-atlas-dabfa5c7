@@ -1,0 +1,171 @@
+---
+title: Activity Tracking
+description: Visualize your coding activity with heatmaps and hourly patterns
+---
+
+The Activity Tracking feature provides visual insights into when and how often you code with Claude.
+
+## Activity Heatmap
+
+The activity heatmap displays your daily message activity in a GitHub-style contribution graph.
+
+### Implementation
+
+The heatmap is implemented in `src/components/activity-heatmap.tsx:26` and renders data from the `StatsCache` type:
+
+```typescript
+export function ActivityHeatmap({ stats }: { stats: StatsCache | null }) {
+  const activity = stats.dailyActivity;
+  const maxMessages = Math.max(...activity.map((d) => d.messageCount), 1);
+}
+```
+
+### Visual Design
+
+The heatmap uses a five-level color scale based on message intensity:
+
+- **No activity**: `bg-[#1a1a1a]` (dark background)
+- **Low activity** (0-25%): `bg-gray-700`
+- **Medium-low** (25-50%): `bg-gray-500`
+- **Medium-high** (50-75%): `bg-gray-300`
+- **High activity** (75-100%): `bg-white`
+
+The color intensity is calculated proportionally:
+
+```typescript
+function getColor(count: number, max: number): string {
+  if (count === 0) return "bg-[#1a1a1a]";
+  const ratio = count / max;
+  if (ratio > 0.75) return "bg-white";
+  if (ratio > 0.5) return "bg-gray-300";
+  if (ratio > 0.25) return "bg-gray-500";
+  return "bg-gray-700";
+}
+```
+
+### Interactive Features
+
+Hovering over any day displays a tooltip with:
+- Full date (formatted as "Weekday, Month Day, Year")
+- Message count for that day
+- Positioned dynamically above the cell
+
+The tooltip positioning code (`src/components/activity-heatmap.tsx:85`):
+
+```typescript
+onMouseEnter={(e) => {
+  const rect = e.currentTarget.getBoundingClientRect();
+  const parent = e.currentTarget.closest("[data-slot='card-content']")?.getBoundingClientRect();
+  if (parent) {
+    setHovered({
+      date: day.date,
+      count: day.count,
+      x: rect.left - parent.left + rect.width / 2,
+      y: rect.top - parent.top - 8,
+    });
+  }
+}}
+```
+
+### Data Structure
+
+The heatmap consumes the `DailyActivity` type from `src/lib/types.ts:36`:
+
+```typescript
+export interface DailyActivity {
+  date: string;
+  messageCount: number;
+  sessionCount: number;
+  toolCallCount: number;
+}
+```
+
+## Sessions by Hour
+
+The hourly breakdown chart shows when you're most active throughout the day.
+
+### Implementation
+
+Located in `src/components/hour-chart.tsx:14`, this component creates a 24-hour bar chart:
+
+```typescript
+export function HourChart({ stats }: { stats: StatsCache | null }) {
+  const data = Array.from({ length: 24 }, (_, i) => ({
+    hour: `${i.toString().padStart(2, "0")}:00`,
+    sessions: Number(stats.hourCounts[String(i)] ?? 0),
+  }));
+}
+```
+
+### Hour Data Collection
+
+Session hours are tracked in the `StatsCache.hourCounts` object, which maps hour strings ("0" through "23") to session counts.
+
+### Visualization
+
+The chart displays:
+- X-axis: Hours from 00:00 to 23:00 (showing every other hour for readability)
+- Y-axis: Number of sessions started during that hour
+- Bars: Light gray (`#e5e7eb`) with rounded tops
+
+## Project Breakdown
+
+Shows which projects consume most of your coding time.
+
+### Implementation
+
+From `src/components/project-breakdown.tsx:14`, this component aggregates session data by project:
+
+```typescript
+export function ProjectBreakdown({ sessions }: { sessions: SessionMeta[] }) {
+  const projectMap = new Map<string, { sessions: number; minutes: number; lines: number }>();
+  
+  for (const s of sessions) {
+    const name = s.project_path.split("/").pop() || s.project_path;
+    const existing = projectMap.get(name) ?? { sessions: 0, minutes: 0, lines: 0 };
+    existing.sessions++;
+    existing.minutes += s.duration_minutes;
+    existing.lines += s.lines_added + s.lines_removed;
+    projectMap.set(name, existing);
+  }
+}
+```
+
+### Features
+
+- Displays top 10 projects by time spent
+- Shows total minutes per project
+- Truncates long project names (>15 chars) with ".." suffix
+- Horizontal bar chart sorted by duration
+
+### Tooltip Information
+
+Hovering over a project bar shows the exact time spent in minutes.
+
+<Note>
+  Project names are extracted from the last segment of the project path. For example, `/Users/me/code/my-app` becomes "my-app".
+</Note>
+
+## Layout and Navigation
+
+All activity tracking components are displayed in the "Activity" tab of the dashboard (`src/components/dashboard.tsx:156`):
+
+```typescript
+<TabsContent value="activity" className="mt-6 space-y-6">
+  <ActivityHeatmap stats={data.stats} />
+  <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+    <HourChart stats={data.stats} />
+    <ProjectBreakdown sessions={data.sessions} />
+  </div>
+</TabsContent>
+```
+
+The layout is responsive:
+- Mobile: Single column
+- Desktop (lg breakpoint): Two columns for hour chart and project breakdown
+
+## Related Features
+
+- [Session Explorer](/features/session-explorer) - Drill down into individual sessions
+- [Tool Usage](/features/tool-usage) - See which tools you use during active hours
+- [Model Analytics](/features/model-analytics) - Track daily token usage patterns
